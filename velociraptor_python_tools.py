@@ -2043,7 +2043,7 @@ def ProduceUnifiedTreeandHaloCatalog(fname,numsnaps,tree,numhalos,halodata,atime
 	ibuildheadtail=False,
 	ibuildforest=False,
 	idescen=True,
-	TEMPORALHALOIDVAL=1000000000000L):
+	TEMPORALHALOIDVAL=1000000000000):
 
 	"""
 
