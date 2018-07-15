@@ -2502,7 +2502,7 @@ def ReadWalkableHDFTree(fname, iverbose=True):
 	"""
 	hdffile=h5py.File(fname,'r')
 	numsnaps=hdffile['Header'].attrs["NSnaps"]
-	nsnapsearch=["Header/TreeBuilder"].attrs["Temporal_linking_length"]
+	#nsnapsearch=["Header/TreeBuilder"].attrs["Temporal_linking_length"]
 	if (iverbose): print("number of snaps",numsnaps)
 	halodata=[dict() for i in range(numsnaps)]
 	for i in range(numsnaps):
@@ -2510,8 +2510,9 @@ def ReadWalkableHDFTree(fname, iverbose=True):
 		if (iverbose): print("snap ",i)
 		for key in hdffile['Snapshots']['Snap_%03d'%i].keys():
 			halodata[i][key]=np.array(hdffile['Snapshots']['Snap_%03d'%i][key])
-		hdffile.close()
-	return halodata,numsnaps,nsnapsearch
+	hdffile.close()
+	#,nsnapsearch
+	return halodata,numsnaps
 
 def FixTruncationBranchSwapsInTreeDescendantAndWrite(rawtreefname,reducedtreename,snapproplistfname,outputupdatedreducedtreename,
 	descripdata={'Title':'Tree catalogue', 'VELOCIraptor_version':1.3, 'Tree_version':1.1, 'Particle_num_threshold':20, 'Temporal_linking_length':1, 'Flag_gas':False, 'Flag_star':False, 'Flag_bh':False},
