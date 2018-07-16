@@ -1739,7 +1739,8 @@ def GenerateProgenitorLinks(numsnaps,numhalos,halodata,nsnapsearch=4,TEMPORALHAL
 	print("Done progenitor links ",time.clock()-start)
 
 def SetForestID(numsnaps,halodata,rootheadid,ForestID,AllRootHead,
-	TEMPORALHALOIDVAL = 1000000000000,searchSnapLim = 5, ireversesnaporder=True):
+	ireversesnaporder=True,
+	TEMPORALHALOIDVAL = 1000000000000, searchSnapLim = 5):
 	"""
 	Sets the forest id of halos using a roothead as a start point.
 	Given an initial root head and end snapshot,
@@ -1840,7 +1841,7 @@ def SetForestID(numsnaps,halodata,rootheadid,ForestID,AllRootHead,
 	return AllRootHead,halodata
 
 def GenerateForest(numsnaps,numhalos,halodata,atime,
-	TEMPORALHALOIDVAL=1000000000000, iverbose=1, interactiontime=2, ispatialintflag=False, pos_tree=[], cosmo=dict()):
+	ireversesnaporder=False, TEMPORALHALOIDVAL=1000000000000, iverbose=1, interactiontime=2, ispatialintflag=False, pos_tree=[], cosmo=dict()):
 	"""
 	This code traces all root heads back in time identifying all interacting haloes and bundles them together into the same forest id
 	The idea is to have in the halodata dictionary an associated unique forest id for all related (sub)haloes. The code also allows
@@ -1860,6 +1861,8 @@ def GenerateForest(numsnaps,numhalos,halodata,atime,
 
 	Optional Parameters
 	-------------------
+	ireversesnaporder : bool
+		Whether first snap is at [0] (False) or last snap is at [0] (True)
 	TEMPORALHALOIDVAL : numpy.int64
 		Temporal ID value that makes Halo IDs temporally unique, adding a snapshot num* this value.
 		Allows one to quickly parse a Halo ID to determine the snapshot it exists at and its index.
@@ -2759,7 +2762,6 @@ def FixTruncationBranchSwapsInTreeDescendantAndWrite(rawtreefname,reducedtreenam
 	#return rawtreedata,halodata,numhalos,atime
 
 def FixTruncationBranchSwapsInTreeDescendant(numsnaps,rawtreedata,halodata,numhalos,
-	descripdata={'Title':'Tree catalogue', 'VELOCIraptor_version':1.3, 'Tree_version':1.1, 'Particle_num_threshold':20, 'Temporal_linking_length':1, 'Flag_gas':False, 'Flag_star':False, 'Flag_bh':False},
 	npartlim=200,meritlim=0.025,xdifflim=2.0,vdifflim=1.0,snapsearch=4,
 	TEMPORALHALOIDVAL=1000000000000):
 	"""
@@ -2772,7 +2774,7 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps,rawtreedata,halodata,numha
 	print('Starting to fix branches')
 	SimulationInfo=copy.deepcopy(halodata[0]['SimulationInfo'])
 	UnitInfo=copy.deepcopy(halodata[0]['SimulationInfo'])
-	period=['SimulationInfo']['Period']
+	period=SimulationInfo['Period']
 	#convert positions and sizes to comoving if necesary
 	if (UnitInfo['Comoving_or_Physical']==0 and SimulationInfo['Cosmological_Sim']==1):
 		converttocomove=['Xc','Yc','Zc','Rmax','R_200crit']
@@ -2796,12 +2798,12 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps,rawtreedata,halodata,numha
 	    for inoprog in noprog[0]:
 	        #have object with no progenitor
 	        haloID=halodata[i]['ID'][inoprog]
-	        haloSnap=np.uint64(haloID/HALOIDVAL)
-	        haloIndex=np.uint64(haloID%HALOIDVAL-1)
+	        haloSnap=np.uint64(haloID/TEMPORALHALOIDVAL)
+	        haloIndex=np.uint64(haloID%TEMPORALHALOIDVAL-1)
 	        haloRootHeadID=halodata[i]['RootHead'][inoprog]
 
 	        #if object doesn't have a main branch that persists for at least 1 snapshot, skip
-	        if (halodata[np.uint32(halodata[i]['Head'][inoprog]/HALOIDVAL)]['Tail'][np.uint64(halodata[i]['Head'][inoprog]%HALOIDVAL-1)]!=haloID): continue
+	        if (halodata[np.uint32(halodata[i]['Head'][inoprog]/TEMPORALHALOIDVAL)]['Tail'][np.uint64(halodata[i]['Head'][inoprog]%TEMPORALHALOIDVAL-1)]!=haloID): continue
 
 	        #get host halo
 	        haloHost=halodata[haloSnap]['hostHaloID'][haloIndex]
@@ -2810,7 +2812,7 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps,rawtreedata,halodata,numha
 
 	        if (iverbose): print('halo with no progenitor', haloID,halodata[i]['npart'][inoprog],halodata[i]['Structuretype'][inoprog],
 	            haloHost,halodata[i]['Head'][inoprog],
-	            halodata[np.uint32(halodata[i]['Head'][inoprog]/HALOIDVAL)]['Tail'][np.uint64(halodata[i]['Head'][inoprog]%HALOIDVAL-1)])
+	            halodata[np.uint32(halodata[i]['Head'][inoprog]/TEMPORALHALOIDVAL)]['Tail'][np.uint64(halodata[i]['Head'][inoprog]%TEMPORALHALOIDVAL-1)])
 	        #first lets see if any halos previous to this point with a snapsearch radius
 	        #point to halo with no progenitor as a high merit, 1 rank connection.
 	        searchrange=max(0,i-snapsearch)
@@ -2835,21 +2837,21 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps,rawtreedata,halodata,numha
 	        #if found nothing, can't fix
 	        if (mergeHalo==-1): continue
 	        #if merge halo is not a zero rank progenitor of anything, can't fix
-	        mergeSnap=np.uint64(mergeHalo/HALOIDVAL)
-	        mergeIndex=np.uint64(mergeHalo%HALOIDVAL-1)
+	        mergeSnap=np.uint64(mergeHalo/TEMPORALHALOIDVAL)
+	        mergeIndex=np.uint64(mergeHalo%TEMPORALHALOIDVAL-1)
 	        if (treedata[mergeSnap]['Rank'][mergeIndex][0]!=0): continue
 	        if (iverbose):print(haloID, 'may have found merge halo',mergeHalo, treedata[mergeSnap]['Descen'][mergeIndex], treedata[mergeSnap]['Merit'][mergeIndex],treedata[mergeSnap]['Rank'][mergeIndex])
 
 	        #have candidate object that points to both object with no progenitor and object with progenitor
 	        #store post merge
 	        postmergeHalo=halodata[mergeSnap]['Head'][mergeIndex]
-	        postmergeSnap=np.uint64(postmergeHalo/HALOIDVAL)
-	        postmergeIndex=np.uint64(postmergeHalo%HALOIDVAL-1)
+	        postmergeSnap=np.uint64(postmergeHalo/TEMPORALHALOIDVAL)
+	        postmergeIndex=np.uint64(postmergeHalo%TEMPORALHALOIDVAL-1)
 	        #note that if post
 	        #store the progenitor of the halo where likely something has merged
 	        premergeHalo=halodata[mergeSnap]['Tail'][mergeIndex]
-	        premergeSnap=np.uint64(premergeHalo/HALOIDVAL)
-	        premergeIndex=np.uint64(premergeHalo%HALOIDVAL-1)
+	        premergeSnap=np.uint64(premergeHalo/TEMPORALHALOIDVAL)
+	        premergeIndex=np.uint64(premergeHalo%TEMPORALHALOIDVAL-1)
 	        #get the merge object's pre/cur/post host halos
 	        mergeHost=halodata[mergeSnap]['hostHaloID'][mergeIndex]
 	        if (mergeHost==-1): mergeHost=halodata[mergeSnap]['ID'][mergeIndex]
@@ -2863,27 +2865,27 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps,rawtreedata,halodata,numha
 	        branchfixHalo=-1
 	        minxdiff=minvdiff=minphase2diff=1e32
 	        curHalo=premergeHalo
-	        curSnap=np.uint64(curHalo/HALOIDVAL)
-	        curIndex=np.uint64(curHalo%HALOIDVAL-1)
+	        curSnap=np.uint64(curHalo/TEMPORALHALOIDVAL)
+	        curIndex=np.uint64(curHalo%TEMPORALHALOIDVAL-1)
 	        searchrange=max(0,curSnap-snapsearch)
 	        while(curSnap>=searchrange and halodata[curSnap]['Tail'][curIndex]!=curHalo):
 	            curHost=halodata[curSnap]['hostHaloID'][curIndex]
 	            if (curHost==-1): curHost=halodata[curSnap]['ID'][curIndex]
-	            curHostSnap=np.uint64(curHost/HALOIDVAL)
-	            curHostIndex=np.uint64(curHost%HALOIDVAL-1)
+	            curHostSnap=np.uint64(curHost/TEMPORALHALOIDVAL)
+	            curHostIndex=np.uint64(curHost%TEMPORALHALOIDVAL-1)
 	            #search for objects that end up at the same root head and have npart enough to warrent search there positions and also
 	            candidates=np.where((halodata[curHostSnap]['RootHead']==haloRootHeadID)*(halodata[curHostSnap]['npart']>=meritlim*halodata[mergeSnap]['npart'][mergeIndex])*(halodata[curHostSnap]['Head']!=mergeHalo))[0]
 	            #if no candidates exist, move back again
 	            if (len(candidates)==0):
 	                curHalo=halodata[curHostSnap]['Tail'][curHostIndex]
-	                curSnap=np.uint64(curHalo/HALOIDVAL)
-	                curIndex=np.uint64(curHalo%HALOIDVAL-1)
+	                curSnap=np.uint64(curHalo/TEMPORALHALOIDVAL)
+	                curIndex=np.uint64(curHalo%TEMPORALHALOIDVAL-1)
 	                continue
 	            #print(haloID,' list of candidate progenitors at ',curSnap,halodata[curHostSnap]['ID'][candidates],treedata[curHostSnap]['Descen'][candidates[0]],treedata[curHostSnap]['Merit'][candidates[0]])
 	            #look at candiates
 	            for icandidate in candidates:
 	                #if object points to a halo at the post merge snap then has match at this point, keep looking
-	                if (np.uint32(halodata[curHostSnap]['Head'][icandidate]/HALOIDVAL)<=haloSnap): continue
+	                if (np.uint32(halodata[curHostSnap]['Head'][icandidate]/TEMPORALHALOIDVAL)<=haloSnap): continue
 	                #if object is not the primary descendant do nothing
 	                if (treedata[curHostSnap]['Rank'][icandidate][0]!=0): continue
 	                #check its position and velocity relative post merge halo
@@ -2903,14 +2905,14 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps,rawtreedata,halodata,numha
 	                    minvdiff=vdiff
 	                    branchfixHalo=halodata[curHostSnap]['ID'][icandidate]
 	            curHalo=halodata[curHostSnap]['Tail'][curHostIndex]
-	            curSnap=np.uint64(curHalo/HALOIDVAL)
-	            curIndex=np.uint64(curHalo%HALOIDVAL-1)
+	            curSnap=np.uint64(curHalo/TEMPORALHALOIDVAL)
+	            curIndex=np.uint64(curHalo%TEMPORALHALOIDVAL-1)
 	        if (branchfixHalo==-1): continue
-	        branchfixSnap=np.uint64(branchfixHalo/HALOIDVAL)
-	        branchfixIndex=np.uint64(branchfixHalo%HALOIDVAL-1)
+	        branchfixSnap=np.uint64(branchfixHalo/TEMPORALHALOIDVAL)
+	        branchfixIndex=np.uint64(branchfixHalo%TEMPORALHALOIDVAL-1)
 	        branchfixHead=halodata[branchfixSnap]['Head'][branchfixIndex]
-	        branchfixHeadSnap=np.uint64(branchfixHead/HALOIDVAL)
-	        branchfixHeadIndex=np.uint64(branchfixHead%HALOIDVAL-1)
+	        branchfixHeadSnap=np.uint64(branchfixHead/TEMPORALHALOIDVAL)
+	        branchfixHeadIndex=np.uint64(branchfixHead%TEMPORALHALOIDVAL-1)
 	        if (iverbose): print('halo branch swap occurs at ',haloID, 'now should have progenitor', mergeHalo, 'with ',branchfixHalo,' taking over ',postmergeHalo,minxdiff,minvdiff)
 	        #now adjust these points, mergeHalo must have its Head changed,
 	        #haloID must have tail and RootTail and all its descedants that share the same root tail updated
@@ -2944,24 +2946,24 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps,rawtreedata,halodata,numha
 
 	        #update the root tails
 	        curHalo=haloID
-	        curSnap=np.uint64(curHalo/HALOIDVAL)
-	        curIndex=np.uint64(curHalo%HALOIDVAL-1)
+	        curSnap=np.uint64(curHalo/TEMPORALHALOIDVAL)
+	        curIndex=np.uint64(curHalo%TEMPORALHALOIDVAL-1)
 	        #while (halodata[curSnap]['RootTail'][curIndex]==haloID):
 	        while (True):
 	            if (iverbose): print('moving up branch to adjust the root tails',curHalo,curSnap,halodata[curSnap]['RootTail'][curIndex],newroottail)
 	            halodata[curSnap]['RootTail'][curIndex]=newroottail
 	            halodata[curSnap]['RootTailSnap'][curIndex]=newroottailSnap
 	            #if not on main branch exit
-	            if (halodata[np.uint32(halodata[curSnap]['Head'][curIndex]/HALOIDVAL)]['Tail'][np.uint64(halodata[curSnap]['Head'][curIndex]%HALOIDVAL-1)]!=curHalo): break
+	            if (halodata[np.uint32(halodata[curSnap]['Head'][curIndex]/TEMPORALHALOIDVAL)]['Tail'][np.uint64(halodata[curSnap]['Head'][curIndex]%TEMPORALHALOIDVAL-1)]!=curHalo): break
 	            #if at root head then exit
 	            if (halodata[curSnap]['Head'][curIndex]==curHalo): break
 	            curHalo=halodata[curSnap]['Head'][curIndex]
-	            curSnap=np.uint64(curHalo/HALOIDVAL)
-	            curIndex=np.uint64(curHalo%HALOIDVAL-1)
+	            curSnap=np.uint64(curHalo/TEMPORALHALOIDVAL)
+	            curIndex=np.uint64(curHalo%TEMPORALHALOIDVAL-1)
 
 	        curHalo=postmergeHalo
-	        curSnap=np.uint64(curHalo/HALOIDVAL)
-	        curIndex=np.uint64(curHalo%HALOIDVAL-1)
+	        curSnap=np.uint64(curHalo/TEMPORALHALOIDVAL)
+	        curIndex=np.uint64(curHalo%TEMPORALHALOIDVAL-1)
 	        # and halodata[curSnap]['Head'][curIndex]!=curHalo
 	        #while (halodata[curSnap]['RootTail'][curIndex]==oldroottail):
 	        while (True):
@@ -2969,14 +2971,21 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps,rawtreedata,halodata,numha
 	            halodata[curSnap]['RootTail'][curIndex]=newroottailbranchfix
 	            halodata[curSnap]['RootTailSnap'][curIndex]=newroottailbranchfixSnap
 	            #if not on main branch exit
-	            if (halodata[np.uint32(halodata[curSnap]['Head'][curIndex]/HALOIDVAL)]['Tail'][np.uint64(halodata[curSnap]['Head'][curIndex]%HALOIDVAL-1)]!=curHalo): break
+	            if (halodata[np.uint32(halodata[curSnap]['Head'][curIndex]/TEMPORALHALOIDVAL)]['Tail'][np.uint64(halodata[curSnap]['Head'][curIndex]%TEMPORALHALOIDVAL-1)]!=curHalo): break
 	            #if at root head then exit
 	            if (halodata[curSnap]['Head'][curIndex]==curHalo): break
 	            curHalo=halodata[curSnap]['Head'][curIndex]
-	            curSnap=np.uint64(curHalo/HALOIDVAL)
-	            curIndex=np.uint64(curHalo%HALOIDVAL-1)
+	            curSnap=np.uint64(curHalo/TEMPORALHALOIDVAL)
+	            curIndex=np.uint64(curHalo%TEMPORALHALOIDVAL-1)
 	print('Done fixing branches')
-	return halodata
+	#convert back to physical coordinates if necessary
+	if (UnitInfo['Comoving_or_Physical']==0 and SimulationInfo['Cosmological_Sim']==1):
+		converttocomove=['Xc','Yc','Zc','Rmax','R_200crit']
+		for i in range(numsnaps):
+		    for key in converttocomove:
+		        halodata[i][key]*=halodata[i]['SimulationInfo']['ScaleFactor']
+		#extracted period from first snap so can use the scale factor stored in simulation info
+		period/=SimulationInfo['ScaleFactor']
 
 """
 	Conversion Tools
