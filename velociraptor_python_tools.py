@@ -2773,7 +2773,7 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps,rawtreedata,halodata,numha
 	"""
 	print('Starting to fix branches')
 	SimulationInfo=copy.deepcopy(halodata[0]['SimulationInfo'])
-	UnitInfo=copy.deepcopy(halodata[0]['SimulationInfo'])
+	UnitInfo=copy.deepcopy(halodata[0]['UnitInfo'])
 	period=SimulationInfo['Period']
 	#convert positions and sizes to comoving if necesary
 	if (UnitInfo['Comoving_or_Physical']==0 and SimulationInfo['Cosmological_Sim']==1):
