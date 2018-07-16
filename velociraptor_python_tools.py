@@ -1800,8 +1800,10 @@ def SetForestID(numsnaps,halodata,rootheadid,ForestID,AllRootHead,
 	iSearchSnap = 0
 
 	#set the direction of how the data will be processed
-	if (ireversesnaporder): snaplist=np.arange(endSnap,numsnaps,dtype=np.int32)
-	else : snaplist=np.arange(endsnap,-1,-1)
+	#if (ireversesnaporder): snaplist=np.arange(endSnap,numsnaps,dtype=np.int32)
+	#else : snaplist=np.arange(endSnap,-1,-1)
+	if (ireversesnaporder): snaplist=np.arange(endSnap,-1,-1)
+	else : snaplist=np.arange(endSnap,numsnaps,dtype=np.int32)
 	for snap in snaplist:
 		#Find which halos at this snapshot point to the RootDescedant
 		sel = np.where(halodata[snap]["RootHead"]==rootheadid)[0]
@@ -1914,7 +1916,11 @@ def GenerateForest(numsnaps,numhalos,halodata,atime,
 	#and all progenitors and group them together into the same forest id
 	forestidval=1
 	start=time.clock()
-	for j in range(numsnaps):
+	#for j in range(numsnaps):
+	#set the direction of how the data will be processed
+	if (ireversesnaporder): snaplist=np.arange(numsnaps-1,-1,-1)
+	else : snaplist=np.arange(0,numsnaps,dtype=np.int32)
+	for j in snaplist:
 		start2=time.clock()
 		if (numhalos[j]==0): continue
 		#now with tree start at last snapshot and identify all root heads
@@ -1928,14 +1934,17 @@ def GenerateForest(numsnaps,numhalos,halodata,atime,
 			if (halodata[j]['ForestID'][iroothead]!=-1): continue
 			AllRootHead = []
 			#begin recursively searching and setting the forest using the the roothead
-			AllRootHead,halodata = SetForestID(numsnaps,halodata,halodata[j]["RootHead"][iroothead],forestidval,AllRootHead)
+			AllRootHead,halodata = SetForestID(numsnaps,halodata,halodata[j]["RootHead"][iroothead],forestidval,AllRootHead,ireversesnaporder,TEMPORALHALOIDVAL)
 			#update forest id
 			forestidval+=1
 		if (iverbose): print("Done snap",j,time.clock()-start2)
 
 	#get the size of each forest
 	ForestSize=np.zeros(forestidval,dtype=int64)
-	for j in range(numsnaps):
+	#for j in range(numsnaps):
+	if (ireversesnaporder): snaplist=np.arange(numsnaps-1,-1,-1)
+	else : snaplist=np.arange(0,numsnaps,dtype=np.int32)
+	for j in snaplist:
 		if (numhalos[j]==0): continue
 		uniqueforest,counts=np.unique(halodata[j]['ForestID'],return_counts=True)
 		for icount in range(len(uniqueforest)):
@@ -1944,7 +1953,10 @@ def GenerateForest(numsnaps,numhalos,halodata,atime,
 	start2=time.clock()
 
 	#first identify all subhalos and see if any have subhalo connections with different than their host
-	for j in range(numsnaps):
+	#for j in range(numsnaps):
+	if (ireversesnaporder): snaplist=np.arange(numsnaps-1,-1,-1)
+	else : snaplist=np.arange(0,numsnaps,dtype=np.int32)
+	for j in snaplist:
 		if (numhalos[j]==0): continue
 		#now with tree start at last snapshot and identify all root heads
 		#only look at halos that are their own root head and are not subhalos
@@ -2761,9 +2773,9 @@ def FixTruncationBranchSwapsInTreeDescendantAndWrite(rawtreefname,reducedtreenam
 	ProduceWalkableHDFTree(outputupdatedreducedtreename,numsnaps,rawtreedata,numhalos,halodata,atime,descripdata)
 	#return rawtreedata,halodata,numhalos,atime
 
-def FixTruncationBranchSwapsInTreeDescendant(numsnaps,rawtreedata,halodata,numhalos,
+def FixTruncationBranchSwapsInTreeDescendant(numsnaps,treedata,halodata,numhalos,
 	npartlim=200,meritlim=0.025,xdifflim=2.0,vdifflim=1.0,snapsearch=4,
-	TEMPORALHALOIDVAL=1000000000000):
+	TEMPORALHALOIDVAL=1000000000000,iverbose=0):
 	"""
 	Updates the walkable tree information stored with the halo data
 	by using the raw tree produced by TreeFrog to correct any branch swap events leading to truncation
