@@ -1918,8 +1918,8 @@ def GenerateForest(numsnaps,numhalos,halodata,atime,
 	start=time.clock()
 	#for j in range(numsnaps):
 	#set the direction of how the data will be processed
-	if (ireversesnaporder): snaplist=np.arange(numsnaps-1,-1,-1)
-	else : snaplist=np.arange(0,numsnaps,dtype=np.int32)
+	if (ireversesnaporder): snaplist=np.arange(0,numsnaps,dtype=np.int32)
+	else : snaplist=np.arange(numsnaps-1,-1,-1)
 	for j in snaplist:
 		start2=time.clock()
 		if (numhalos[j]==0): continue
@@ -1942,8 +1942,8 @@ def GenerateForest(numsnaps,numhalos,halodata,atime,
 	#get the size of each forest
 	ForestSize=np.zeros(forestidval,dtype=int64)
 	#for j in range(numsnaps):
-	if (ireversesnaporder): snaplist=np.arange(numsnaps-1,-1,-1)
-	else : snaplist=np.arange(0,numsnaps,dtype=np.int32)
+	if (ireversesnaporder): snaplist=np.arange(0,numsnaps,dtype=np.int32)
+	else : snaplist=np.arange(numsnaps-1,-1,-1)
 	for j in snaplist:
 		if (numhalos[j]==0): continue
 		uniqueforest,counts=np.unique(halodata[j]['ForestID'],return_counts=True)
@@ -1954,8 +1954,8 @@ def GenerateForest(numsnaps,numhalos,halodata,atime,
 
 	#first identify all subhalos and see if any have subhalo connections with different than their host
 	#for j in range(numsnaps):
-	if (ireversesnaporder): snaplist=np.arange(numsnaps-1,-1,-1)
-	else : snaplist=np.arange(0,numsnaps,dtype=np.int32)
+	if (ireversesnaporder): snaplist=np.arange(0,numsnaps,dtype=np.int32)
+	else : snaplist=np.arange(numsnaps-1,-1,-1)
 	for j in snaplist:
 		if (numhalos[j]==0): continue
 		#now with tree start at last snapshot and identify all root heads
