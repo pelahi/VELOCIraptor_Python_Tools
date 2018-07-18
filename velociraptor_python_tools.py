@@ -1623,28 +1623,40 @@ def IdentifyMergers(numsnaps,tree,numhalos,halodata,boxsize,hval,atime,MERGERMLI
 				#if at end of line then move up and set last major merger to 0
 		if (iverbose): print("Done snap",j,time.clock()-start)
 
-def generate_sublinks(numhalos,halodata):
+def generate_sublinks(numhalos,halodata, iverbose=0):
 	"""
 	generate sublinks for specific time slice
 	"""
 	if (numhalos==0):
 		return
-	halos=np.where(halodata['hostHaloID']==-1)[0]
-	for ihalo in halos:
-		haloid=halodata['ID'][ihalo]
-		halodata['PreviousSubhalo'][ihalo]=haloid
-		w=np.where((halodata["hostHaloID"]==haloid))[0]
-		if (len(w)>0):
-			halodata['NextSubhalo'][ihalo]=halodata['ID'][w[0]]
-			halodata['PreviousSubhalo'][w[0]]=halodata['ID'][w[0]]
-			for isub in range(len(w)-1):
-				subid=halodata['ID'][w[isub]]
-				nextsubid=halodata['ID'][w[isub+1]]
-				halodata['NextSubhalo'][w[isub]]=nextsubid
-				halodata['PreviousSubhalo'][w[isub+1]]=subid
-			halodata['NextSubhalo'][w[-1]]=halodata['ID'][w[-1]]
-		else:
-			halodata['NextSubhalo'][ihalo]=haloid
+	#get hosts and also all subhalos
+	hosts=np.where(halodata['hostHaloID']==-1)[0]
+	hostsids=halodata['ID'][hosts]
+	hostsnumsubs=np.array(halodata['numSubStruct'][hosts],dtype=np.int64)
+	subhalos=np.where(np.in1d(halodata['hostHaloID'],hostsids))[0]
+	#order by host halo ID
+	subhalos=subhalos[np.argsort(halodata['hostHaloID'][subhalos])]
+	#then init Next/ Previous to point to itself
+	
+	#generate offset based on hostnumsubs
+	hostssuboffset=np.zeros(len(hosts),dtype=np.int64)
+	hostssuboffset[1:]=np.cumsum(hostsnumsubs[:-1])
+
+	if (iverbose): print(len(hosts),len(subhalos))
+	#now for all hosts, start iterating
+	for ihalo in range(len(hosts)):
+		if (hostsnumsubs[ihalo]==0): continue
+		prevsub=halodata['ID'][hosts[ihalo]]
+		halodata['PreviousSubhalo'][hosts[ihalo]]=prevsub
+		nextsub=halodata['ID'][subhalos[hostssuboffset[ihalo]]]
+		halodata['NextSubhalo'][hosts[ihalo]]=nextsub
+		for j in range(hostsnumsubs[ihalo]-1):
+			halodata['PreviousSubhalo'][subhalos[hostssuboffset[ihalo]+j]]=prevsub
+			nextsub=halodata['ID'][subhalos[hostssuboffset[ihalo]+j+1]]
+			halodata['NextSubhalo'][subhalos[hostssuboffset[ihalo]+j]]=nextsub
+			prevsub=halodata['ID'][subhalos[hostssuboffset[ihalo]+j]]
+		halodata['PreviousSubhalo'][subhalos[hostssuboffset[ihalo]+hostsnumsubs[ihalo]-1]]=prevsub
+		halodata['NextSubhalo'][subhalos[hostssuboffset[ihalo]+hostsnumsubs[ihalo]-1]]=halodata['ID'][subhalos[hostssuboffset[ihalo]+hostsnumsubs[ihalo]-1]]
 
 def GenerateSubhaloLinks(numsnaps,numhalos,halodata,TEMPORALHALOIDVAL=1000000000000, iverbose=0, iparallel=0):
 	"""
@@ -1672,14 +1684,14 @@ def GenerateSubhaloLinks(numsnaps,numhalos,halodata,TEMPORALHALOIDVAL=1000000000
 		if (iparallel):
 			activenthreads=nthreads
 			if (numsnaps-1-j<activenthreads): activenthreads=numsnaps-1-j
-			processes=[mp.Process(target=generate_sublinks,args=(numhalos[j+k],halodata[j+k])) for k in range(activenthreads)]
+			processes=[mp.Process(target=generate_sublinks,args=(numhalos[j+k],halodata[j+k],iverbose)) for k in range(activenthreads)]
 			for p in processes:
 				p.start()
 			for p in processes:
 				p.join()
 			if (iverbose): print("Done snaps",j,"to",j+nthreads,time.clock()-start2)
 		else:
-			generate_sublinks(numhalos[j],halodata[j])
+			generate_sublinks(numhalos[j],halodata[j],iverbose)
 			if (iverbose): print("Done snap",j,time.clock()-start2)
 	print("Done subhalolinks ",time.clock()-start)
 
@@ -1705,45 +1717,62 @@ def GenerateProgenitorLinks(numsnaps,numhalos,halodata,ireversesnaporder=False, 
 	start=time.clock()
 	if (ireversesnaporder): snaplist=range(1,numsnaps)
 	else: snaplist=range(numsnaps-2,-1,-1)
-
 	for j in snaplist:
 		start2=time.clock()
 		if (numhalos[j]==0): continue
-		#find all unique heads
-		heads=np.unique(np.array(np.int64(halodata[j]['Head'])))
-		#for these heads identify all halos with this head
-		for ihead in heads:
-			currenttails=deque()
-			if (ireversesnaporder): snaplist2=range(j,j+snapsearch)
-			else: snaplist2=range(j,j-snapsearch)
-			for k in snaplist2:
-				w=np.where(halodata[k]['Head']==ihead)
-				if (len(w[0])>0):
-					currenttails.extend(np.nditer(np.int64(halodata[k]["ID"][w])))
-			if (len(currenttails)==0):
-				continue
-			haloid=currenttails[0]
-			haloindex=np.int64(haloid%TEMPORALHALOIDVAL-1)
-			if (ireversesnaporder): halosnap=np.int32(numsnaps-1-(haloid-np.int64(haloid%TEMPORALHALOIDVAL))/TEMPORALHALOIDVAL)
-			else: halosnap=np.int32((haloid-np.int64(haloid%TEMPORALHALOIDVAL))/TEMPORALHALOIDVAL)
-			halodata[halosnap]['PreviousProgenitor'][haloindex]=np.int64(haloid)
-			for itail in range(len(currenttails)-1):
-				haloid=currenttails[itail]
-				haloindex=np.int64(haloid%TEMPORALHALOIDVAL-1)
-				if (ireversesnaporder): halosnap=np.int32(numsnaps-1-(haloid-np.int64(haloid%TEMPORALHALOIDVAL))/TEMPORALHALOIDVAL)
-				else : halosnap=np.int32((haloid-np.int64(haloid%TEMPORALHALOIDVAL))/TEMPORALHALOIDVAL)
-				haloindex=int(currenttails[itail]%TEMPORALHALOIDVAL-1)
-				nexthaloid=currenttails[itail+1]
-				nexthaloindex=np.int64(nexthaloid%TEMPORALHALOIDVAL-1)
-				if (ireversesnaporder): nexthalosnap=np.int32(numsnaps-1-(nexthaloid-np.int64(nexthaloid%TEMPORALHALOIDVAL))/TEMPORALHALOIDVAL)
-				else : nexthalosnap=np.int32((nexthaloid-np.int64(nexthaloid%TEMPORALHALOIDVAL))/TEMPORALHALOIDVAL)
-				halodata[halosnap]['NextProgenitor'][haloindex]=np.int64(nexthaloid)
-				halodata[nexthalosnap]['PreviousProgenitor'][nexthaloindex]=np.int64(haloid)
-			haloid=currenttails[-1]
-			haloindex=np.int64(haloid%TEMPORALHALOIDVAL-1)
-			if (ireversesnaporder): halosnap=np.int32(numsnaps-1-(haloid-np.int64(haloid%TEMPORALHALOIDVAL))/TEMPORALHALOIDVAL)
-			else : halosnap=np.int32(numsnaps-1-(haloid-np.int64(haloid%TEMPORALHALOIDVAL))/TEMPORALHALOIDVAL)
-			halodata[halosnap]['NextProgenitor'][haloindex]=haloid
+		if (numhalos[j+1]==0): continue
+		#get hosts and also all subhalos
+		heads=halodata[j+1]['ID']
+		#for these IDs identify all halos with this as their head
+		if (ireversesnaporder): snaplist2=np.arange(j,min(j+nsnapsearch,numsnaps),dtype=np.int32)
+		else: snaplist2=np.arange(j,max(j-nsnapsearch,-1),-1,dtype=np.int32)
+		progens=[]
+		progenssnaps=[]
+		progensheads=[]
+		progensids=[]
+		for k in snaplist2:
+			wdata=np.where(np.in1d(halodata[k]['Head'],heads))
+			if (len(wdata[0])==0): continue
+			progens.append(wdata[0])
+			progenssnaps.append(np.ones(len(progens[-1]))*k)
+			progensheads.append(halodata[k]['Head'][wdata])
+			progensids.append(halodata[k]['ID'][wdata])
+        #flatten and then reorder to group stuff by head
+		progens=np.array(np.concatenate(progens),dtype=np.int64)
+		progenssnaps=np.array(np.concatenate(progenssnaps),dtype=np.int32)
+		progensheads=np.array(np.concatenate(progensheads),dtype=np.int64)
+		progensids=np.array(np.concatenate(progensids),dtype=np.int64)
+		nprogs=len(progens)
+		print(j,numhalos[j+1],nprogs)
+		if (nprogs<2): continue
+		idx=np.argsort(progensheads)
+		progens,progenssnaps,progensheads,progensids=progens[idx],progenssnaps[idx],progensheads[idx],progensids[idx]
+		#now move along the length of the progen array to set up current and previous 
+		activehead=progensheads[0]
+		prevprog,nextprog=-1,progensids[0]
+		index,snap=progens[0],progenssnaps[0]
+		halodata[snap]['PreviousProgenitor'][index]=-1
+		for iprog in range(1,nprogs-1):
+			index,snap=progens[iprog],progenssnaps[iprog]
+			nextindex,nextsnap=progens[iprog+1],progenssnaps[iprog+1]
+			previndex,prevsnap=progens[iprog-1],progenssnaps[iprog-1]
+			curhead=progensheads[iprog]
+			if (curhead!=activehead):
+				#print(activehead,curhead,index,snap,prevprog,nextprog)
+				nextprog=-1
+				halodata[snap]['PreviousProgenitor'][index]=-1
+				halodata[prevsnap]['NextProgenitor'][previndex]=-1
+				prevprog=-1
+				activehead=curhead
+				#break
+			else:
+				nextprog=progensids[iprog]
+				halodata[snap]['PreviousProgenitor'][index]=prevprog
+				halodata[prevsnap]['NextProgenitor'][previndex]=nextprog
+				prevprog=progensids[iprog]
+		curhead=progensheads[-1]
+		index,snap=progens[-1],progenssnaps[-1]
+		halodata[snap]['NextProgenitor'][index]=-1
 		if (iverbose): print("Done snap",j,time.clock()-start2)
 	print("Done progenitor links ",time.clock()-start)
 
