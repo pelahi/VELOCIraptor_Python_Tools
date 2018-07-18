@@ -1683,7 +1683,7 @@ def GenerateSubhaloLinks(numsnaps,numhalos,halodata,TEMPORALHALOIDVAL=1000000000
 			if (iverbose): print("Done snap",j,time.clock()-start2)
 	print("Done subhalolinks ",time.clock()-start)
 
-def GenerateProgenitorLinks(numsnaps,numhalos,halodata,nsnapsearch=4,TEMPORALHALOIDVAL=1000000000000, iverbose=1):
+def GenerateProgenitorLinks(numsnaps,numhalos,halodata,ireversesnaporder=False, nsnapsearch=4,TEMPORALHALOIDVAL=1000000000000, iverbose=1):
 	"""
 	This code generates a quick way of moving across a halo's progenitor list storing a the next/previous progenitor
 
@@ -1703,7 +1703,10 @@ def GenerateProgenitorLinks(numsnaps,numhalos,halodata,nsnapsearch=4,TEMPORALHAL
 		halodata[j]["PreviousProgenitor"]=np.ones(numhalos[j],dtype=np.int64)*-1
 	#move backward in time and identify all unique heads
 	start=time.clock()
-	for j in range(1,numsnaps):
+	if (ireversesnaporder): snaplist=range(1,numsnaps)
+	else: snaplist=range(numsnaps-2,-1,-1)
+
+	for j in snaplist:
 		start2=time.clock()
 		if (numhalos[j]==0): continue
 		#find all unique heads
@@ -1711,35 +1714,41 @@ def GenerateProgenitorLinks(numsnaps,numhalos,halodata,nsnapsearch=4,TEMPORALHAL
 		#for these heads identify all halos with this head
 		for ihead in heads:
 			currenttails=deque()
-			for k in range(j,j+nsnapsearch):
+			if (ireversesnaporder): snaplist2=range(j,j+snapsearch)
+			else: snaplist2=range(j,j-snapsearch)
+			for k in snaplist2:
 				w=np.where(halodata[k]['Head']==ihead)
 				if (len(w[0])>0):
 					currenttails.extend(np.nditer(np.int64(halodata[k]["ID"][w])))
 			if (len(currenttails)==0):
 				continue
 			haloid=currenttails[0]
-			haloindex=int(haloid%TEMPORALHALOIDVAL-1)
-			halosnap=numsnaps-1-(haloid-int(haloid%TEMPORALHALOIDVAL))/TEMPORALHALOIDVAL
+			haloindex=np.int64(haloid%TEMPORALHALOIDVAL-1)
+			if (ireversesnaporder): halosnap=np.int32(numsnaps-1-(haloid-np.int64(haloid%TEMPORALHALOIDVAL))/TEMPORALHALOIDVAL)
+			else: halosnap=np.int32((haloid-np.int64(haloid%TEMPORALHALOIDVAL))/TEMPORALHALOIDVAL)
 			halodata[halosnap]['PreviousProgenitor'][haloindex]=np.int64(haloid)
 			for itail in range(len(currenttails)-1):
 				haloid=currenttails[itail]
-				haloindex=int(haloid%TEMPORALHALOIDVAL-1)
-				halosnap=np.inte64(numsnaps-1-(haloid-int(haloid%TEMPORALHALOIDVAL))/TEMPORALHALOIDVAL)
+				haloindex=np.int64(haloid%TEMPORALHALOIDVAL-1)
+				if (ireversesnaporder): halosnap=np.int32(numsnaps-1-(haloid-np.int64(haloid%TEMPORALHALOIDVAL))/TEMPORALHALOIDVAL)
+				else : halosnap=np.int32((haloid-np.int64(haloid%TEMPORALHALOIDVAL))/TEMPORALHALOIDVAL)
 				haloindex=int(currenttails[itail]%TEMPORALHALOIDVAL-1)
 				nexthaloid=currenttails[itail+1]
-				nexthaloindex=int(nexthaloid%TEMPORALHALOIDVAL-1)
-				nexthalosnap=np.int64(numsnaps-1-(nexthaloid-int(nexthaloid%TEMPORALHALOIDVAL))/TEMPORALHALOIDVAL)
+				nexthaloindex=np.int64(nexthaloid%TEMPORALHALOIDVAL-1)
+				if (ireversesnaporder): nexthalosnap=np.int32(numsnaps-1-(nexthaloid-np.int64(nexthaloid%TEMPORALHALOIDVAL))/TEMPORALHALOIDVAL)
+				else : nexthalosnap=np.int32((nexthaloid-np.int64(nexthaloid%TEMPORALHALOIDVAL))/TEMPORALHALOIDVAL)
 				halodata[halosnap]['NextProgenitor'][haloindex]=np.int64(nexthaloid)
 				halodata[nexthalosnap]['PreviousProgenitor'][nexthaloindex]=np.int64(haloid)
 			haloid=currenttails[-1]
-			haloindex=int(haloid%TEMPORALHALOIDVAL-1)
-			halosnap=numsnaps-1-(haloid-int(haloid%TEMPORALHALOIDVAL))/TEMPORALHALOIDVAL
+			haloindex=np.int64(haloid%TEMPORALHALOIDVAL-1)
+			if (ireversesnaporder): halosnap=np.int32(numsnaps-1-(haloid-np.int64(haloid%TEMPORALHALOIDVAL))/TEMPORALHALOIDVAL)
+			else : halosnap=np.int32(numsnaps-1-(haloid-np.int64(haloid%TEMPORALHALOIDVAL))/TEMPORALHALOIDVAL)
 			halodata[halosnap]['NextProgenitor'][haloindex]=haloid
 		if (iverbose): print("Done snap",j,time.clock()-start2)
 	print("Done progenitor links ",time.clock()-start)
 
 def SetForestID(numsnaps,halodata,rootheadid,ForestID,AllRootHead,
-	ireversesnaporder=True,
+	ireversesnaporder=False,
 	TEMPORALHALOIDVAL = 1000000000000, searchSnapLim = 5):
 	"""
 	Sets the forest id of halos using a roothead as a start point.
@@ -1803,8 +1812,9 @@ def SetForestID(numsnaps,halodata,rootheadid,ForestID,AllRootHead,
 	#if (ireversesnaporder): snaplist=np.arange(endSnap,numsnaps,dtype=np.int32)
 	#else : snaplist=np.arange(endSnap,-1,-1)
 	if (ireversesnaporder): snaplist=np.arange(endSnap,-1,-1)
-	else : snaplist=np.arange(endSnap,numsnaps,dtype=np.int32)
+	else : snaplist=np.arange(0,endSnap,dtype=np.int32)
 	for snap in snaplist:
+		
 		#Find which halos at this snapshot point to the RootDescedant
 		sel = np.where(halodata[snap]["RootHead"]==rootheadid)[0]
 
@@ -2783,6 +2793,7 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps,treedata,halodata,numhalos
 	raw tre information with merits and secondary rank descendants.
 
 	"""
+	start = time.clock()
 	print('Starting to fix branches')
 	SimulationInfo=copy.deepcopy(halodata[0]['SimulationInfo'])
 	UnitInfo=copy.deepcopy(halodata[0]['UnitInfo'])
@@ -2935,7 +2946,7 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps,treedata,halodata,numhalos
 	        newroottailSnap=halodata[mergeSnap]['RootTailSnap'][mergeIndex]
 	        newroottailbranchfixSnap=halodata[branchfixSnap]['RootTailSnap'][branchfixIndex]
 	        oldroottail=halodata[postmergeSnap]['RootTail'][postmergeIndex]
-	        print('new tails will be ',newroottail,newroottailbranchfix,file=f1)
+	        if (iverbose): print('new tails will be ',newroottail,newroottailbranchfix)
 
 	        #adjust head tails of object with no progenitor
 	        if (iverbose): print('before fix merge',mergeHalo,halodata[mergeSnap]['Head'][mergeIndex],'no prog',haloID,halodata[haloSnap]['Tail'][haloIndex])
@@ -2989,7 +3000,7 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps,treedata,halodata,numhalos
 	            curHalo=halodata[curSnap]['Head'][curIndex]
 	            curSnap=np.uint64(curHalo/TEMPORALHALOIDVAL)
 	            curIndex=np.uint64(curHalo%TEMPORALHALOIDVAL-1)
-	print('Done fixing branches')
+	print('Done fixing branches',time.clock()-start)
 	#convert back to physical coordinates if necessary
 	if (UnitInfo['Comoving_or_Physical']==0 and SimulationInfo['Cosmological_Sim']==1):
 		converttocomove=['Xc','Yc','Zc','Rmax','R_200crit']
