@@ -1092,6 +1092,15 @@ def BuildTemporalHeadTail(numsnaps,tree,numhalos,halodata,TEMPORALHALOIDVAL=1000
 		halodata[k]['RootHeadSnap']=np.zeros(numhalos[k],dtype=np.int32)
 		halodata[k]['RootTailSnap']=np.zeros(numhalos[k],dtype=np.int32)
 		halodata[k]['Num_progen']=np.zeros(numhalos[k],dtype=np.uint32)
+		#aliases
+		halodata[k]['Progenitor']=halodata[k]['Tail']
+		halodata[k]['Descendant']=halodata[k]['Head']
+		halodata[k]['DescendantSnap']=halodata[k]['HeadSnap']
+		halodata[k]['ProgenitorSnap']=halodata[k]['TailSnap']
+		halodata[k]['FirstProgenitor']=halodata[k]['RootTail']
+		halodata[k]['FirstProgenitorSnap']=halodata[k]['RootTailSnap']
+		halodata[k]['LastDescendant']=halodata[k]['RootHead']
+		halodata[k]['LastDescendantSnap']=halodata[k]['RootHeadSnap']
 	#for each snapshot identify halos that have not had their tail set
 	#for these halos, the main branch must be walked
 	#allocate python manager to wrapper the tree and halo catalog so they can be altered in parallel
@@ -1637,7 +1646,7 @@ def generate_sublinks(numhalos,halodata, iverbose=0):
 	#order by host halo ID
 	subhalos=subhalos[np.argsort(halodata['hostHaloID'][subhalos])]
 	#then init Next/ Previous to point to itself
-	
+
 	#generate offset based on hostnumsubs
 	hostssuboffset=np.zeros(len(hosts),dtype=np.int64)
 	hostssuboffset[1:]=np.cumsum(hostsnumsubs[:-1])
@@ -1711,8 +1720,11 @@ def GenerateProgenitorLinks(numsnaps,numhalos,halodata,ireversesnaporder=False, 
 
 	for j in range(numsnaps):
 		#store id and snap and mass of last major merger and while we're at it, store number of major mergers
-		halodata[j]["NextProgenitor"]=np.ones(numhalos[j],dtype=np.int64)*-1
-		halodata[j]["PreviousProgenitor"]=np.ones(numhalos[j],dtype=np.int64)*-1
+		halodata[j]["LeftTail"]=np.ones(numhalos[j],dtype=np.int64)*-1
+		halodata[j]["RightTail"]=np.ones(numhalos[j],dtype=np.int64)*-1
+		#alias the data
+		halodata[j]["PreviousProgenitor"]=halodata[j]["LeftTail"]
+		halodata[j]["NextProgenitor"]=halodata[j]["RightTail"]
 	#move backward in time and identify all unique heads
 	start=time.clock()
 	if (ireversesnaporder): snaplist=range(1,numsnaps)
@@ -1747,11 +1759,11 @@ def GenerateProgenitorLinks(numsnaps,numhalos,halodata,ireversesnaporder=False, 
 		if (nprogs<2): continue
 		idx=np.argsort(progensheads)
 		progens,progenssnaps,progensheads,progensids=progens[idx],progenssnaps[idx],progensheads[idx],progensids[idx]
-		#now move along the length of the progen array to set up current and previous 
+		#now move along the length of the progen array to set up current and previous
 		activehead=progensheads[0]
 		prevprog,nextprog=-1,progensids[0]
 		index,snap=progens[0],progenssnaps[0]
-		halodata[snap]['PreviousProgenitor'][index]=-1
+		halodata[snap]['LeftTail'][index]=-1
 		for iprog in range(1,nprogs-1):
 			index,snap=progens[iprog],progenssnaps[iprog]
 			nextindex,nextsnap=progens[iprog+1],progenssnaps[iprog+1]
@@ -1760,19 +1772,19 @@ def GenerateProgenitorLinks(numsnaps,numhalos,halodata,ireversesnaporder=False, 
 			if (curhead!=activehead):
 				#print(activehead,curhead,index,snap,prevprog,nextprog)
 				nextprog=-1
-				halodata[snap]['PreviousProgenitor'][index]=-1
-				halodata[prevsnap]['NextProgenitor'][previndex]=-1
+				halodata[snap]['LeftTail'][index]=-1
+				halodata[prevsnap]['RightTail'][previndex]=-1
 				prevprog=-1
 				activehead=curhead
 				#break
 			else:
 				nextprog=progensids[iprog]
-				halodata[snap]['PreviousProgenitor'][index]=prevprog
-				halodata[prevsnap]['NextProgenitor'][previndex]=nextprog
+				halodata[snap]['LeftTail'][index]=prevprog
+				halodata[prevsnap]['RightTail'][previndex]=nextprog
 				prevprog=progensids[iprog]
 		curhead=progensheads[-1]
 		index,snap=progens[-1],progenssnaps[-1]
-		halodata[snap]['NextProgenitor'][index]=-1
+		halodata[snap]['RightTail'][index]=-1
 		if (iverbose): print("Done snap",j,time.clock()-start2)
 	print("Done progenitor links ",time.clock()-start)
 
@@ -1799,8 +1811,8 @@ def SetForestID(numsnaps,halodata,rootheadid,ForestID,AllRootHead,
 		the halodata dictionary structure which must contain the halo merger tree based keys (Head, RootHead), etc.
 	rootheadid : numpy.int64
 		the rootheadid of the tree that will be explored and have its forestID set
-	AllRootHead : list
-		a list that stores the current set of rootheadid values that have been searched
+	AllRootHead : numpy.int64 (was list)
+		stores the current set of rootheadid values that have been searched
 
 	Optional Parameters
 	-------------------
@@ -1822,12 +1834,12 @@ def SetForestID(numsnaps,halodata,rootheadid,ForestID,AllRootHead,
 
 	"""
 
+	if (ireversesnaporder): endSnap = np.int64(numsnaps-int(rootheadid/TEMPORALHALOIDVAL)-1)
+	else : endSnap = np.int64(rootheadid/TEMPORALHALOIDVAL)
+	rootheadindex=np.int64(rootheadid%TEMPORALHALOIDVAL-1)
 
-	if (ireversesnaporder): endSnap = numsnaps-int(rootheadid/TEMPORALHALOIDVAL)-1
-	else : endSnap = int(rootheadid/TEMPORALHALOIDVAL)
-	rootheadindex=int(rootheadid%TEMPORALHALOIDVAL-1)
-
-	AllRootHead.append(rootheadid)
+	#AllRootHead.append(rootheadid)
+	AllRootHead=np.append(AllRootHead,rootheadid)
 
 	#set the forest level of this searcheed
 	#if this object is a host at final snap then set the forest level to 0
@@ -1843,9 +1855,10 @@ def SetForestID(numsnaps,halodata,rootheadid,ForestID,AllRootHead,
 	if (ireversesnaporder): snaplist=np.arange(endSnap,-1,-1)
 	else : snaplist=np.arange(0,endSnap,dtype=np.int32)
 	for snap in snaplist:
-		
+
 		#Find which halos at this snapshot point to the RootDescedant
-		sel = np.where(halodata[snap]["RootHead"]==rootheadid)[0]
+		#sel = np.where(halodata[snap]["RootHead"]==rootheadid)[0]
+		sel = np.where(np.in1d(halodata[snap]["RootHead"],rootheadid))[0]
 
 		#keep track of how many snapshots there have been where there is nothing in the tree
 		if(sel.size==0):
@@ -1860,6 +1873,19 @@ def SetForestID(numsnaps,halodata,rootheadid,ForestID,AllRootHead,
 		#Lets find which halos are subhalos of the halos within the tree defined by
 		#halos with the same rootheadid
 		subHaloIndxs = np.where(np.in1d(halodata[snap]["hostHaloID"],halodata[snap]["ID"][sel]))[0]
+		if (len(subHaloIndxs)>0):
+			subHaloRootHeads=halodata[snap]["RootHead"][wdata][np.where(np.in1d(halodata[snap]["RootHead"][wdata],AllRootHead,invert=True))]
+			if (len(subHaloRootHeads)>0):
+				AllRootHead,halodata = SetForestID(numsnaps,halodata,subHaloRootHeads,ForestID,AllRootHead)
+		#Extract the hosts of all subhalos in this selection that are not already in the tree defined by rootheadid
+		treeSubhaloSel = (halodata[snap]["hostHaloID"][sel]!=-1) & (np.invert(np.in1d(halodata[snap]["hostHaloID"][sel],halodata[snap]["ID"][sel])))
+		if (len(treeSubhaloSel)>0):
+			#Get the index of these hosts that lie outside the tree
+			hostIndxs = np.unique(halodata[snap]["hostHaloID"][sel][treeSubhaloSel]%TEMPORALHALOIDVAL-1).astype(np.int64)
+			hostRootHeads=halodata[snap]["RootHead"][hostIndxs][np.where(np.in1d(halodata[snap]["RootHead"][hostIndxs],AllRootHead,invert=True))]
+			AllRootHead,halodata = SetForestID(numsnaps,halodata,hostRootHeads,ForestID,AllRootHead)
+		"""
+		subHaloIndxs = np.where(np.in1d(halodata[snap]["hostHaloID"],halodata[snap]["ID"][sel]))[0]
 		#Lets loop over all the subhalos within this selection, which contains
 		#all subhalos of any host halos within the tree defined by rootheadid
 		for subHaloIndx in subHaloIndxs:
@@ -1867,18 +1893,17 @@ def SetForestID(numsnaps,halodata,rootheadid,ForestID,AllRootHead,
 			if(halodata[snap]["RootHead"][subHaloIndx] not in AllRootHead):
 				#Lets walk the subhalo's tree setting the forest ID
 				AllRootHead,halodata = SetForestID(numsnaps,halodata,halodata[snap]["RootHead"][subHaloIndx],ForestID,AllRootHead)
-
 		#Extract the hosts of all subhalos in this selection that are not already in the tree defined by rootheadid
 		treeSubhaloSel = (halodata[snap]["hostHaloID"][sel]!=-1) & (np.invert(np.in1d(halodata[snap]["hostHaloID"][sel],halodata[snap]["ID"][sel])))
 		#Get the index of these hosts that lie outside the tree
-		hostIndxs = np.unique(halodata[snap]["hostHaloID"][sel][treeSubhaloSel]%TEMPORALHALOIDVAL-1).astype(int)
+		hostIndxs = np.unique(halodata[snap]["hostHaloID"][sel][treeSubhaloSel]%TEMPORALHALOIDVAL-1).astype(np.int64)
 		#Loop over all the index for the host halos
 		for hostIndx in hostIndxs:
 			#See if this tree has already been set
 			if(halodata[snap]["RootHead"][hostIndx] not in AllRootHead):
 				#Lets walk the hosts tree setting the forrest ID
 				AllRootHead,halodata = SetForestID(numsnaps,halodata,halodata[snap]["RootHead"][hostIndx],ForestID,AllRootHead)
-
+		"""
 	return AllRootHead,halodata
 
 def GenerateForest(numsnaps,numhalos,halodata,atime,
@@ -1973,7 +1998,8 @@ def GenerateForest(numsnaps,numhalos,halodata,atime,
 			if (halodata[j]['ForestID'][iroothead]!=-1): continue
 			AllRootHead = []
 			#begin recursively searching and setting the forest using the the roothead
-			AllRootHead,halodata = SetForestID(numsnaps,halodata,halodata[j]["RootHead"][iroothead],forestidval,AllRootHead,ireversesnaporder,TEMPORALHALOIDVAL)
+			#AllRootHead,halodata = SetForestID(numsnaps,halodata,halodata[j]["RootHead"][iroothead],forestidval,AllRootHead,ireversesnaporder,TEMPORALHALOIDVAL)
+			AllRootHead,halodata = SetForestID(numsnaps,halodata,np.array([halodata[j]["RootHead"][iroothead]]),forestidval,AllRootHead,ireversesnaporder,TEMPORALHALOIDVAL)
 			#update forest id
 			forestidval+=1
 		if (iverbose): print("Done snap",j,time.clock()-start2)
