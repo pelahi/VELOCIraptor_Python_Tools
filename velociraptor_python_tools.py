@@ -1857,7 +1857,7 @@ def SetForestID(numsnaps,numhalos,halodata,rootheadid,ForestID,AllRootHead,
 	if (ireversesnaporder): snaplist=np.arange(endSnap,-1,-1)[::-1]
 	else : snaplist=np.arange(0,endSnap,dtype=np.int32)[::-1]
 	for snap in snaplist:
-		if (numhalos[snap]==0): continue 
+		if (numhalos[snap]==0): continue
 
 		#Find which halos at this snapshot point to the RootDescedant
 		#sel = np.where(halodata[snap]["RootHead"]==rootheadid)[0]
@@ -1908,7 +1908,7 @@ def SetForestID(numsnaps,numhalos,halodata,rootheadid,ForestID,AllRootHead,
 				#Lets walk the hosts tree setting the forrest ID
 				AllRootHead,halodata = SetForestID(numsnaps,numhalos,halodata,halodata[snap]["RootHead"][hostIndx],ForestID,AllRootHead)
 		"""
-		
+
 	return AllRootHead,halodata
 
 def GenerateForest(numsnaps,numhalos,halodata,atime,
@@ -2018,8 +2018,8 @@ def GenerateForest(numsnaps,numhalos,halodata,atime,
 				descens=np.where(np.in1d(halodata[k]['Tail'],ids))
 				#then map forests ids to lowest positive id
 				for idescen in descens[0]:
-					if (halodata[k]['ForestID'][idescen]> idtoactiveforests[halodata[k]['Tail'][idescen]):
-						halodata[k]['ForestID'][idescen]=idtoactiveforests[halodata[k]['Tail'][idescen]
+					if (halodata[k]['ForestID'][idescen] > idtoactiveforests[halodata[k]['Tail'][idescen]]):
+						halodata[k]['ForestID'][idescen]=idtoactiveforests[halodata[k]['Tail'][idescen]]
 						newforests+=1
 		print('done walking forward, found  ',newforest, time.clock()-start2)
 		if (newforests==0): break
