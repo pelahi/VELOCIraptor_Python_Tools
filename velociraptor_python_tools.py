@@ -1911,7 +1911,7 @@ def SetForestID(numsnaps,numhalos,halodata,rootheadid,ForestID,AllRootHead,
 
 	return AllRootHead,halodata
 
-def GenerateForest(numsnaps,numhalos,halodata,atime,
+def GenerateForest(numsnaps,numhalos,halodata,atime,nsnapsearch=4,
 	ireversesnaporder=False, TEMPORALHALOIDVAL=1000000000000, iverbose=1, interactiontime=2, ispatialintflag=False, pos_tree=[], cosmo=dict()):
 	"""
 	This code traces all root heads back in time identifying all interacting haloes and bundles them together into the same forest id
@@ -1994,76 +1994,102 @@ def GenerateForest(numsnaps,numhalos,halodata,atime,
 	start2=time.clock()
 	for j in snaplist:
 		if (numhalos[j]==0): continue
-
 		hosts=np.where(halodata[j]['hostHaloID']==-1)
 		halodata[j]['ForestID'][hosts]=halodata[j]['ID'][hosts]
 		subs=np.where(halodata[j]['hostHaloID']!=-1)
 		if (len(subs[0])==0): continue
 		halodata[j]['ForestID'][subs]=halodata[j]['hostHaloID'][subs]
 	print('finished first pass',time.clock()-start2)
+
 	#now move foward in time looking at descendants of host halos to merge forest ids
 	start1=time.clock()
 	while (True):
-		start2=time.clock()
-		print('walking forward ')
 		newforests=0
-		for j in snaplist[::-1]:
+		start2=time.clock()
+		if (iverbose): print('walking forward in time looking at descendants')
+		if (ireversesnaporder): snaplist=np.arange(0,numsnaps-1,dtype=np.int32)[::-1]
+		else : snaplist=np.arange(numsnaps-1,0,-1)[::-1]
+		for j in snaplist:
 			if (numhalos[j]==0): continue
 			#get list of ids that need to look for descendants of
+			start3=time.clock()
 			ids=halodata[j]['ID']
 			idtoactiveforests=dict(zip(halodata[j]['ID'],halodata[j]['ForestID']))
-			for k in range(j+1,j+nsnapsearch):
+			if (ireversesnaporder): 
+				endsnapsearch=max(0,j-nsnapsearch-1)
+				snaplist2=np.arange(j-1,endsnapsearch,-1,dtype=np.int32)
+			else: 
+				endsnapsearch=min(numsnaps,j+nsnapsearch+1)
+				snaplist2=np.arange(j+1,endsnapsearch,dtype=np.int32)
+			incforests=0
+			for k in snaplist2:
 				if (numhalos[k]==0): continue
-				#find all descendants
+				#find all descendants of currently active halos by finding those whose tails point to actve ids
 				descens=np.where(np.in1d(halodata[k]['Tail'],ids))
+				#look at descendants that don't match forests
+				nomatch=np.where(np.in1d(halodata[k]['ForestID'][descens],halodata[j]['ForestID'],invert=True))
+				#print("comparing ",j,k,numhalos[j],numhalos[k],len(descens[0]),len(nomatch[0]))
+				if (len(nomatch[0])==0): continue
 				#then map forests ids to lowest positive id
-				for idescen in descens[0]:
+				for idescen in descens[0][nomatch]:
 					if (halodata[k]['ForestID'][idescen] > idtoactiveforests[halodata[k]['Tail'][idescen]]):
+						#if (incforests==0): print('looking at remapping forests',j,k,halodata[k]['Tail'][idescen],halodata[k]['ID'][idescen],idtoactiveforests[halodata[k]['Tail'][idescen]],halodata[k]['ForestID'][idescen])
 						halodata[k]['ForestID'][idescen]=idtoactiveforests[halodata[k]['Tail'][idescen]]
 						newforests+=1
-		print('done walking forward, found  ',newforest, time.clock()-start2)
+						incforests+=1
+			if (iverbose>1): print("done ",j,numhalos[j],incforests,newforests,time.clock()-start3)
+		if (iverbose): print('done walking forward, found  ',newforests, time.clock()-start2)
+
+		start2=time.clock()
+		if (iverbose): print('walking backward in time looking at progenitors')
+		if (ireversesnaporder): snaplist=np.arange(0,numsnaps-1,dtype=np.int32)
+		else : snaplist=np.arange(numsnaps-1,0,-1)
+		for j in snaplist:
+			if (numhalos[j]==0): continue
+			#get list of ids that need to look for descendants of
+			start3=time.clock()
+			ids=halodata[j]['ID']
+			idtoactiveforests=dict(zip(halodata[j]['ID'],halodata[j]['ForestID']))
+			if (ireversesnaporder): 
+				endsnapsearch=min(numsnaps,j+nsnapsearch+1)
+				snaplist2=np.arange(j+1,endsnapsearch,dtype=np.int32)
+			else: 
+				endsnapsearch=max(0,j-nsnapsearch-1)
+				snaplist2=np.arange(j-1,endsnapsearch,-1,dtype=np.int32)
+			incforests=0
+			for k in snaplist2:
+				if (numhalos[k]==0): continue
+				#find all descendants
+				progens=np.where(np.in1d(halodata[k]['Head'],ids))
+				#look at descendants that don't match forests
+				nomatch=np.where(np.in1d(halodata[k]['ForestID'][progens],halodata[j]['ForestID'],invert=True))
+				#print("comparing ",j,k,numhalos[j],numhalos[k],len(progens[0]),len(nomatch[0]))
+				if (len(nomatch[0])==0): continue
+				#then map forests ids to lowest positive id
+				for iprog in progens[0][nomatch]:
+					if (halodata[k]['ForestID'][iprog] > idtoactiveforests[halodata[k]['Head'][iprog]]):
+						#if (incforests==0): print('looking at remapping forests',j,k,halodata[k]['Head'][iprog],halodata[k]['ID'][iprog],idtoactiveforests[halodata[k]['Head'][iprog]],halodata[k]['ForestID'][iprog])
+						halodata[k]['ForestID'][iprog]=idtoactiveforests[halodata[k]['Head'][iprog]]
+						newforests+=1
+						incforests+=1
+			if (iverbose>1): print("done ",j,numhalos[j],incforests,newforests,time.clock()-start4)
+		if (iverbose): print('done walking backward, found  ',newforests, time.clock()-start2)
 		if (newforests==0): break
 	print('done ', time.clock()-start1)
 
-	"""
-	for j in snaplist:
-		start2=time.clock()
-		if (numhalos[j]==0): continue
-		#now with tree start at last snapshot and identify all root heads
-		#only look at halos that are their own root head and are not subhalos
-		rootheads=np.where((halodata[j]['ID']==halodata[j]['RootHead'])*(halodata[j]['hostHaloID']==-1)*(halodata[j]['ForestID']==-1))
-		if (iverbose): print("At snapshot",j,len(rootheads[0]))
-		for iroothead in rootheads[0]:
-			#if a halo has been processed as part of a forest as a
-			#result of walking the subhalo branches of a different root head
-			#then move on to the next object
-			if (halodata[j]['ForestID'][iroothead]!=-1): continue
-			start=time.clock()
-			#begin recursively searching and setting the forest using the the roothead
-			#AllRootHead = []
-			#AllRootHead,halodata = SetForestID(numsnaps,numhalos,halodata,halodata[j]["RootHead"][iroothead],forestidval,AllRootHead,ireversesnaporder,TEMPORALHALOIDVAL)
-			AllRootHead = np.array([])
-			AllRootHead,halodata = SetForestID(numsnaps,numhalos,halodata,np.array([halodata[j]["RootHead"][iroothead]]),forestidval,AllRootHead,ireversesnaporder,TEMPORALHALOIDVAL)
-			print(j,iroothead,halodata[j]["RootHead"][iroothead],time.clock()-start)
-			#update forest id
-			forestidval+=1
-		if (iverbose): print("Done snap",j,time.clock()-start2)
-
 	#get the size of each forest
-	ForestSize=np.zeros(forestidval,dtype=int64)
-	#for j in range(numsnaps):
-	if (ireversesnaporder): snaplist=np.arange(0,numsnaps,dtype=np.int32)
-	else : snaplist=np.arange(numsnaps-1,-1,-1)
-	for j in snaplist:
-		if (numhalos[j]==0): continue
-		uniqueforest,counts=np.unique(halodata[j]['ForestID'],return_counts=True)
-		for icount in range(len(uniqueforest)):
-			ForestSize[uniqueforest[icount]-1]+=counts[icount]
-		if (iverbose): print("Finished processing forest size for snap",j)
+	ForestIDs,ForestSize=np.unique(np.concatenate([halodata[i]['ForestID'] for i in range(numsnaps)]),return_counts=True)
+	numforests=len(ForestIDs)
+	ForestSizeStats=dict()
+	ForestSizeStats['AcrossCosmicTime']=dict(zip(ForestIDs,ForestSize))
+	ForestSizeStats['Snapshots']=dict()
+	for i in range(numsnaps):
+		ForestSizeStats['Snapshots']['Snap_%03d'%i]=dict(zip(ForestIDs,np.zeros(numforests)))
+		activeforest,counts=np.unique(halodata[i]['ForestID'],return_counts=True)
+		for j in range(len(counts)): ForestSizeStats['Snapshots']['Snap_%03d'%i][activeforest[j]]=counts[j]
+
 	start2=time.clock()
-	"""
 	#first identify all subhalos and see if any have subhalo connections with different than their host
-	#for j in range(numsnaps):
 	if (ireversesnaporder): snaplist=np.arange(0,numsnaps,dtype=np.int32)
 	else : snaplist=np.arange(numsnaps-1,-1,-1)
 	for j in snaplist:
@@ -2073,7 +2099,7 @@ def GenerateForest(numsnaps,numhalos,halodata,atime,
 		missingforest=np.where((halodata[j]['ForestID']==-1))
 		rootheads=np.where((halodata[j]['ID']==halodata[j]['RootHead'])*(halodata[j]['ForestID']==-1))
 		subrootheads=np.where((halodata[j]['ForestID']==-1)*(halodata[j]['hostHaloID']!=-1))
-		if (iverbose): print("At snapshot",j," still have ",halodata[j]['ForestID'].size,len(missingforest[0]), " with no forest id ! Of which ",len(rootheads[0])," are root heads", len(subrootheads[0]),"are subhalos")
+		if (iverbose>2): print("At snapshot",j," still have ",halodata[j]['ForestID'].size,len(missingforest[0]), " with no forest id ! Of which ",len(rootheads[0])," are root heads", len(subrootheads[0]),"are subhalos")
 		#if (iverbose and len(missingforest[0])>0): print("At snapshot",j," still have ",len(missingforest[0]), " with no forest id ! Of which ",len(rootheads[0])," are root heads", len(subrootheads[0]),"are subhalos")
 		if (len(subrootheads[0])>0):
 			for isub in subrootheads[0]:
@@ -2083,7 +2109,7 @@ def GenerateForest(numsnaps,numhalos,halodata,atime,
 				halodata[j]['ForestLevel'][isub]=halodata[j]['ForestLevel'][hostindex]+1
 	#then return this
 	print("Done generating forest",time.clock()-start)
-	return ForestSize
+	return ForestSizeStats
 
 """
 Adjust halo catalog for period, comoving coords, etc
