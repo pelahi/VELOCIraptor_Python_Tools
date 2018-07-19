@@ -1989,6 +1989,43 @@ def GenerateForest(numsnaps,numhalos,halodata,atime,
 	#set the direction of how the data will be processed
 	if (ireversesnaporder): snaplist=np.arange(0,numsnaps,dtype=np.int32)
 	else : snaplist=np.arange(numsnaps-1,-1,-1)
+	#first pass assigning forests based on FOF and subs
+	offset=0
+	start2=time.clock()
+	for j in snaplist:
+		if (numhalos[j]==0): continue
+
+		hosts=np.where(halodata[j]['hostHaloID']==-1)
+		halodata[j]['ForestID'][hosts]=halodata[j]['ID'][hosts]
+		subs=np.where(halodata[j]['hostHaloID']!=-1)
+		if (len(subs[0])==0): continue
+		halodata[j]['ForestID'][subs]=halodata[j]['hostHaloID'][subs]
+	print('finished first pass',time.clock()-start2)
+	#now move foward in time looking at descendants of host halos to merge forest ids
+	start1=time.clock()
+	while (True):
+		start2=time.clock()
+		print('walking forward ')
+		newforests=0
+		for j in snaplist[::-1]:
+			if (numhalos[j]==0): continue
+			#get list of ids that need to look for descendants of
+			ids=halodata[j]['ID']
+			idtoactiveforests=dict(zip(halodata[j]['ID'],halodata[j]['ForestID']))
+			for k in range(j+1,j+nsnapsearch):
+				if (numhalos[k]==0): continue
+				#find all descendants
+				descens=np.where(np.in1d(halodata[k]['Tail'],ids))
+				#then map forests ids to lowest positive id
+				for idescen in descens[0]:
+					if (halodata[k]['ForestID'][idescen]> idtoactiveforests[halodata[k]['Tail'][idescen]):
+						halodata[k]['ForestID'][idescen]=idtoactiveforests[halodata[k]['Tail'][idescen]
+						newforests+=1
+		print('done walking forward, found  ',newforest, time.clock()-start2)
+		if (newforests==0): break
+	print('done ', time.clock()-start1)
+
+	"""
 	for j in snaplist:
 		start2=time.clock()
 		if (numhalos[j]==0): continue
@@ -2024,7 +2061,7 @@ def GenerateForest(numsnaps,numhalos,halodata,atime,
 			ForestSize[uniqueforest[icount]-1]+=counts[icount]
 		if (iverbose): print("Finished processing forest size for snap",j)
 	start2=time.clock()
-
+	"""
 	#first identify all subhalos and see if any have subhalo connections with different than their host
 	#for j in range(numsnaps):
 	if (ireversesnaporder): snaplist=np.arange(0,numsnaps,dtype=np.int32)
