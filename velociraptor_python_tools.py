@@ -1892,10 +1892,10 @@ def GenerateForest(numsnaps,numhalos,halodata,atime,nsnapsearch=4,
 			start3=time.clock()
 			ids=halodata[j]['ID']
 			idtoactiveforests=dict(zip(halodata[j]['ID'],halodata[j]['ForestID']))
-			if (ireversesnaporder): 
+			if (ireversesnaporder):
 				endsnapsearch=max(0,j-nsnapsearch-1)
 				snaplist2=np.arange(j-1,endsnapsearch,-1,dtype=np.int32)
-			else: 
+			else:
 				endsnapsearch=min(numsnaps,j+nsnapsearch+1)
 				snaplist2=np.arange(j+1,endsnapsearch,dtype=np.int32)
 			incforests=0
@@ -1911,7 +1911,7 @@ def GenerateForest(numsnaps,numhalos,halodata,atime,nsnapsearch=4,
 				for idescen in descens[0][nomatch]:
 					if (halodata[k]['ForestID'][idescen] > idtoactiveforests[halodata[k]['Tail'][idescen]]):
 						#if (incforests==0): print('looking at remapping forests',j,k,halodata[k]['Tail'][idescen],halodata[k]['ID'][idescen],idtoactiveforests[halodata[k]['Tail'][idescen]],halodata[k]['ForestID'][idescen])
-						halodata[k]['ForestID'][idescen]=idtoactiveforests[halodata[k]['Tail'][idescen]]
+						halodata[k]['ForestID'][descens][nomatch][np.where(halodata[k]['ForestID'][descens][nomatch]==halodata[k]['ForestID'][idescen])]=idtoactiveforests[halodata[k]['Tail'][idescen]]
 						newforests+=1
 						incforests+=1
 			if (iverbose>1): print("done ",j,numhalos[j],incforests,newforests,time.clock()-start3)
@@ -1927,10 +1927,10 @@ def GenerateForest(numsnaps,numhalos,halodata,atime,nsnapsearch=4,
 			start3=time.clock()
 			ids=halodata[j]['ID']
 			idtoactiveforests=dict(zip(halodata[j]['ID'],halodata[j]['ForestID']))
-			if (ireversesnaporder): 
+			if (ireversesnaporder):
 				endsnapsearch=min(numsnaps,j+nsnapsearch+1)
 				snaplist2=np.arange(j+1,endsnapsearch,dtype=np.int32)
-			else: 
+			else:
 				endsnapsearch=max(0,j-nsnapsearch-1)
 				snaplist2=np.arange(j-1,endsnapsearch,-1,dtype=np.int32)
 			incforests=0
@@ -1946,7 +1946,7 @@ def GenerateForest(numsnaps,numhalos,halodata,atime,nsnapsearch=4,
 				for iprog in progens[0][nomatch]:
 					if (halodata[k]['ForestID'][iprog] > idtoactiveforests[halodata[k]['Head'][iprog]]):
 						#if (incforests==0): print('looking at remapping forests',j,k,halodata[k]['Head'][iprog],halodata[k]['ID'][iprog],idtoactiveforests[halodata[k]['Head'][iprog]],halodata[k]['ForestID'][iprog])
-						halodata[k]['ForestID'][iprog]=idtoactiveforests[halodata[k]['Head'][iprog]]
+						halodata[k]['ForestID'][progens][nomatch][np.where(halodata[k]['ForestID'][progens][nomatch]==halodata[k]['ForestID'][iprog])]=idtoactiveforests[halodata[k]['Head'][iprog]]
 						newforests+=1
 						incforests+=1
 			if (iverbose>1): print("done ",j,numhalos[j],incforests,newforests,time.clock()-start4)
