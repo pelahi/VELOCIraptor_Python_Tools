@@ -1869,6 +1869,7 @@ def GenerateForest(numsnaps,numhalos,halodata,atime,nsnapsearch=4,
 	#first pass assigning forests based on FOF and subs
 	offset=0
 	start2=time.clock()
+	print('starting first pass in producing forest ids')
 	for j in snaplist:
 		if (numhalos[j]==0): continue
 		hosts=np.where(halodata[j]['hostHaloID']==-1)
@@ -1876,10 +1877,22 @@ def GenerateForest(numsnaps,numhalos,halodata,atime,nsnapsearch=4,
 		subs=np.where(halodata[j]['hostHaloID']!=-1)
 		if (len(subs[0])==0): continue
 		halodata[j]['ForestID'][subs]=halodata[j]['hostHaloID'][subs]
-	print('finished first pass',time.clock()-start2)
+	#get initial size of each forest where forests are grouped by halo+subhalo relation
+	ForestIDs,ForestSize=np.unique(np.concatenate([halodata[i]['ForestID'] for i in range(numsnaps)]),return_counts=True)
+	numforests=len(ForestIDs)
+	ForestSizeStats=dict(zip(ForestIDs,ForestSize))
+	#ForestSizeStats['Snapshots']=[[] for i in range(numsnaps)]
+	#for i in snaplist:
+	#	if (numhalos[i]==0): continue
+	#	ForestSizeStats['Snapshots'][i]=np.zeros(numforests,dtype=np.int64)
+	#	activeforest,counts=np.unique(halodata[i]['ForestID'],return_counts=True)
+	#	ForestSizeStats['Snapshots'][i][np.where(np.in1d(ForestIDs,activeforest))]=counts
+	print('finished first pass',time.clock()-start2,'have ', numforests, 'initial forests')
+	print(np.sum(ForestSize),np.max(ForestSize))
 
 	#now move foward in time looking at descendants of host halos to merge forest ids
 	start1=time.clock()
+	numloops=0
 	while (True):
 		newforests=0
 		start2=time.clock()
@@ -1887,11 +1900,12 @@ def GenerateForest(numsnaps,numhalos,halodata,atime,nsnapsearch=4,
 		if (ireversesnaporder): snaplist=np.arange(0,numsnaps-1,dtype=np.int32)[::-1]
 		else : snaplist=np.arange(numsnaps-1,0,-1)[::-1]
 		for j in snaplist:
+			if (iverbose>1): print("starting snapshot %d containing %d "%(j,numhalos[j]))
 			if (numhalos[j]==0): continue
 			#get list of ids that need to look for descendants of
 			start3=time.clock()
-			ids=halodata[j]['ID']
-			idtoactiveforests=dict(zip(halodata[j]['ID'],halodata[j]['ForestID']))
+			activeforestids,activeforestsize=np.unique(halodata[j]['ForestID'],return_counts=True)
+			activeforest=dict(zip(activeforestids,activeforestsize))
 			if (ireversesnaporder):
 				endsnapsearch=max(0,j-nsnapsearch-1)
 				snaplist2=np.arange(j-1,endsnapsearch,-1,dtype=np.int32)
@@ -1901,59 +1915,104 @@ def GenerateForest(numsnaps,numhalos,halodata,atime,nsnapsearch=4,
 			incforests=0
 			for k in snaplist2:
 				if (numhalos[k]==0): continue
-				#find all descendants of currently active halos by finding those whose tails point to actve ids
-				descens=np.where(np.in1d(halodata[k]['Tail'],ids))
-				#look at descendants that don't match forests
-				nomatch=np.where(np.in1d(halodata[k]['ForestID'][descens],halodata[j]['ForestID'],invert=True))
-				#print("comparing ",j,k,numhalos[j],numhalos[k],len(descens[0]),len(nomatch[0]))
-				if (len(nomatch[0])==0): continue
-				#then map forests ids to lowest positive id
-				for idescen in descens[0][nomatch]:
-					if (halodata[k]['ForestID'][idescen] > idtoactiveforests[halodata[k]['Tail'][idescen]]):
-						#if (incforests==0): print('looking at remapping forests',j,k,halodata[k]['Tail'][idescen],halodata[k]['ID'][idescen],idtoactiveforests[halodata[k]['Tail'][idescen]],halodata[k]['ForestID'][idescen])
-						halodata[k]['ForestID'][descens][nomatch][np.where(halodata[k]['ForestID'][descens][nomatch]==halodata[k]['ForestID'][idescen])]=idtoactiveforests[halodata[k]['Tail'][idescen]]
-						newforests+=1
-						incforests+=1
-			if (iverbose>1): print("done ",j,numhalos[j],incforests,newforests,time.clock()-start3)
-		if (iverbose): print('done walking forward, found  ',newforests, time.clock()-start2)
+				##find all descendants of currently active halos by finding those whose tails point to snapshot being searched
+				##activedescens=np.where(np.int32(halodata[j]['Head']/TEMPORALHALOIDVAL) == k )[0]
+				#find all descendants of currently active halos by finding those whose tails point to snapshot of the descendant list
+				descens=np.where(np.int32(halodata[k]['Tail']/TEMPORALHALOIDVAL) == j )[0]
+				if (len(descens)==0): continue
+				#if first loop passed, then some amount of forest ids have been updated and can limit search to those that don't match
+				#if (numloops>=1):
+				#	wdata=np.where(np.in1d(halodata[k]['ForestID'][descens],halodata[j]['ForestID'],invert=True))
+				#	if (len(wdata[0])==0): continue 
+				#	descens=descens[wdata]
+				descenforestids,descenforestsize=np.unique(halodata[k]['ForestID'][descens],return_counts=True)
+				descenforest=dict(zip(descenforestids,descenforestsize))
+				#print(j,k,descenforestsize[np.where(descenforestsize>1)])
+				for idescen in descens:
+					itail=np.int64(halodata[k]['Tail'][idescen]%TEMPORALHALOIDVAL-1)
+					if (halodata[k]['ForestID'][idescen] == halodata[j]['ForestID'][itail]): continue
+					# if descendant has larger forest id, update the forest id, noting the size of the forest
+					#print(j,k,idescen,halodata[k]['ForestID'][idescen],halodata[j]['ForestID'][itail])
+					#blah=np.where(halodata[k]['ForestID'][descens]==halodata[k]['ForestID'][idescen])
+					#print('blah',len(blah[0]))
+					#print('descen size',descenforest[halodata[k]['ForestID'][idescen]])
+					#print('active size',activeforest[halodata[j]['ForestID'][itail]])
+					#if (descenforest[halodata[k]['ForestID'][idescen]]!=len(blah[0])): print('count does not match where! ',j,k,idescen,itail,halodata[k]['ForestID'][idescen],halodata[j]['ForestID'][itail])
 
-		start2=time.clock()
-		if (iverbose): print('walking backward in time looking at progenitors')
-		if (ireversesnaporder): snaplist=np.arange(0,numsnaps-1,dtype=np.int32)
-		else : snaplist=np.arange(numsnaps-1,0,-1)
-		for j in snaplist:
-			if (numhalos[j]==0): continue
-			#get list of ids that need to look for descendants of
-			start3=time.clock()
-			ids=halodata[j]['ID']
-			idtoactiveforests=dict(zip(halodata[j]['ID'],halodata[j]['ForestID']))
-			if (ireversesnaporder):
-				endsnapsearch=min(numsnaps,j+nsnapsearch+1)
-				snaplist2=np.arange(j+1,endsnapsearch,dtype=np.int32)
-			else:
-				endsnapsearch=max(0,j-nsnapsearch-1)
-				snaplist2=np.arange(j-1,endsnapsearch,-1,dtype=np.int32)
-			incforests=0
-			for k in snaplist2:
-				if (numhalos[k]==0): continue
-				#find all descendants
-				progens=np.where(np.in1d(halodata[k]['Head'],ids))
-				#look at descendants that don't match forests
-				nomatch=np.where(np.in1d(halodata[k]['ForestID'][progens],halodata[j]['ForestID'],invert=True))
-				#print("comparing ",j,k,numhalos[j],numhalos[k],len(progens[0]),len(nomatch[0]))
-				if (len(nomatch[0])==0): continue
-				#then map forests ids to lowest positive id
-				for iprog in progens[0][nomatch]:
-					if (halodata[k]['ForestID'][iprog] > idtoactiveforests[halodata[k]['Head'][iprog]]):
-						#if (incforests==0): print('looking at remapping forests',j,k,halodata[k]['Head'][iprog],halodata[k]['ID'][iprog],idtoactiveforests[halodata[k]['Head'][iprog]],halodata[k]['ForestID'][iprog])
-						halodata[k]['ForestID'][progens][nomatch][np.where(halodata[k]['ForestID'][progens][nomatch]==halodata[k]['ForestID'][iprog])]=idtoactiveforests[halodata[k]['Head'][iprog]]
+					if (halodata[k]['ForestID'][idescen] > halodata[j]['ForestID'][itail]):
+						#if (ForestSizeStats['Snapshots'][k][halodata[k]['ForestID'][idescen]]>1):
+						#check the descenforest list to see how many objects share this forest id, if more than one 
+						#run np.where and update the forest ids and the dictionary storing size info
+						if (descenforest[halodata[k]['ForestID'][idescen]]>1):
+							numincursnap=descenforest[halodata[k]['ForestID'][idescen]]
+							#print('updating multiple descendants ',numincursnap,len(wdata[0]))
+							ForestSizeStats[halodata[k]['ForestID'][idescen]]-=numincursnap
+							ForestSizeStats[halodata[j]['ForestID'][itail]]+=numincursnap
+							del descenforest[halodata[k]['ForestID'][idescen]]
+							descenforest[halodata[j]['ForestID'][itail]]=numincursnap
+							activeforest[halodata[j]['ForestID'][itail]]+=numincursnap
+							#halodata[k]['ForestID'][descens][wdata]=halodata[j]['ForestID'][itail] 
+							wdata=np.where(halodata[k]['ForestID'][descens]==halodata[k]['ForestID'][idescen])
+							for ii in descens[wdata]: halodata[k]['ForestID'][ii]=halodata[j]['ForestID'][itail] 
+						else :
+							numincursnap=descenforest[halodata[k]['ForestID'][idescen]]
+							wdata=np.where(halodata[k]['ForestID'][descens]==halodata[k]['ForestID'][idescen])
+							#print('updating single descendants ',numincursnap,len(wdata[0]))
+
+							ForestSizeStats[halodata[k]['ForestID'][idescen]]-=1
+							ForestSizeStats[halodata[j]['ForestID'][itail]]+=1
+							del descenforest[halodata[k]['ForestID'][idescen]]
+							descenforest[halodata[j]['ForestID'][itail]]=1
+							activeforest[halodata[j]['ForestID'][itail]]+=1
+							halodata[k]['ForestID'][idescen]=halodata[j]['ForestID'][itail]
+
 						newforests+=1
 						incforests+=1
-			if (iverbose>1): print("done ",j,numhalos[j],incforests,newforests,time.clock()-start4)
-		if (iverbose): print('done walking backward, found  ',newforests, time.clock()-start2)
+					# otherwise, update the progenitor forest ids. Does mean loops must be interated till no new links found
+					elif (halodata[k]['ForestID'][idescen] < halodata[j]['ForestID'][itail]):
+						if (activeforest[halodata[j]['ForestID'][itail]]>1):
+							numincursnap=activeforest[halodata[j]['ForestID'][itail]]
+							ForestSizeStats[halodata[k]['ForestID'][idescen]]+=numincursnap
+							ForestSizeStats[halodata[j]['ForestID'][itail]]-=numincursnap
+							del activeforest[halodata[j]['ForestID'][itail]]
+							activeforest[halodata[k]['ForestID'][idescen]]=numincursnap
+							descenforest[halodata[k]['ForestID'][idescen]]+=numincursnap
+							wdata=np.where(halodata[j]['ForestID']==halodata[j]['ForestID'][itail])[0]
+							for ii in wdata: halodata[j]['ForestID'][ii]=halodata[k]['ForestID'][idescen] 
+						else :
+							ForestSizeStats[halodata[k]['ForestID'][idescen]]+=1
+							ForestSizeStats[halodata[j]['ForestID'][itail]]-=1
+							del activeforest[halodata[j]['ForestID'][itail]]
+							activeforest[halodata[k]['ForestID'][idescen]]=1
+							descenforest[halodata[k]['ForestID'][idescen]]+=1
+							halodata[j]['ForestID'][itail]=halodata[k]['ForestID'][idescen]
+
+						newforests+=1
+						incforests+=1
+			if (iverbose>1): print("done snap %d containing %d halos and found %d new forest links in a time of %f"%(j,numhalos[j],incforests,time.clock()-start3))
+		if (iverbose): print('done walking forward, found  ',newforests, ' new forest links at ',numloops,' loop in a time of ',time.clock()-start2)
+		numloops+=1
 		if (newforests==0): break
-	print('done ', time.clock()-start1)
+	print('done linking between forests in %d in a time of %f'%(numloops,time.clock()-start1))
+	#get the size of each forest
+	ForestSize=np.array([ForestSizeStats[key] for key in ForestSizeStats.keys()])
+	wdata=np.where(ForestSize>0)
+	ForestIDs=np.array(list(ForestSizeStats.keys()))[wdata]
+	ForestSize=ForestSize[wdata]
+	numforests=len(wdata[0])
+	maxforest=max(ForestSize)
 
+	ForestSizeStats=dict()
+	ForestSizeStats['AllSnaps']=dict(zip(ForestIDs,ForestSize))
+	ForestSizeStats['Number_of_forests']=numforests
+	ForestSizeStats['Largest_forest_size']=maxforest
+	ForestSizeStats['Snapshots']=dict()
+	for i in range(numsnaps):
+		ForestSizeStats['Snapshots']['Snap_%03d'%i]=np.zeros(numforests,dtype=np.int64)
+		if (numhalos[i]==0): continue
+		activeforest,counts=np.unique(halodata[i]['ForestID'],return_counts=True)
+		ForestSizeStats['Snapshots']['Snap_%03d'%i][np.where(np.in1d(ForestIDs,activeforest))]=counts
+	"""
 	#get the size of each forest
 	ForestIDs,ForestSize=np.unique(np.concatenate([halodata[i]['ForestID'] for i in range(numsnaps)]),return_counts=True)
 	numforests=len(ForestIDs)
@@ -1964,7 +2023,7 @@ def GenerateForest(numsnaps,numhalos,halodata,atime,nsnapsearch=4,
 		ForestSizeStats['Snapshots']['Snap_%03d'%i]=np.zeros(numforests,dtype=np.int64)
 		activeforest,counts=np.unique(halodata[i]['ForestID'],return_counts=True)
 		ForestSizeStats['Snapshots']['Snap_%03d'%i][np.where(np.in1d(ForestIDs,activeforest))]=counts
-
+	"""
 	start2=time.clock()
 	#first identify all subhalos and see if any have subhalo connections with different than their host
 	if (ireversesnaporder): snaplist=np.arange(0,numsnaps,dtype=np.int32)
