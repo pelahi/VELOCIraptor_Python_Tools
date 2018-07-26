@@ -2127,7 +2127,7 @@ def AdjustComove(itocomovefromphysnumsnaps,numsnaps,numhalos,atime,halodata,igas
 Code to use individual snapshot files and merge them together into a full unified hdf file containing information determined from the tree
 """
 
-def ProduceUnifiedTreeandHaloCatalog(fname,numsnaps,tree,numhalos,halodata,atime,
+def ProduceUnifiedTreeandHaloCatalog(fname,numsnaps,rawtreedata,numhalos,halodata,atime,
 	descripdata={'Title':'Tree and Halo catalog of sim', 'VELOCIraptor_version':1.15, 'Tree_version':1.1, 'Particle_num_threshold':20, 'Temporal_linking_length':1, 'Flag_gas':False, 'Flag_star':False, 'Flag_bh':False},
 	cosmodata={'Omega_m':1.0, 'Omega_b':0., 'Omega_Lambda':0., 'Hubble_param':1.0,'BoxSize':1.0, 'Sigma8':1.0},
 	unitdata={'UnitLength_in_Mpc':1.0, 'UnitVelocity_in_kms':1.0,'UnitMass_in_Msol':1.0, 'Flag_physical_comoving':True,'Flag_hubble_flow':False},
@@ -2139,7 +2139,7 @@ def ProduceUnifiedTreeandHaloCatalog(fname,numsnaps,tree,numhalos,halodata,atime
 
 	"""
 
-	produces a unifed HDF5 formatted file containing the full catalog plus information to walk the tree
+	produces a unifed HDF5 formatted file containing the full catalog plus information to walk the tree stored in the halo data 
 	\ref BuildTemporalHeadTail must have been called before otherwise it is called.
 	Code produces a file for each snapshot
 	The keys are the same as that contained in the halo catalog dictionary with the addition of
@@ -2154,13 +2154,13 @@ def ProduceUnifiedTreeandHaloCatalog(fname,numsnaps,tree,numhalos,halodata,atime
 	if (ibuildheadtail):
 		if (set(treekeys).issubset(set(halodata[0].keys()))==False):
 			if (idescen):
-				BuildTemporalHeadTailDescendant(numsnaps,tree,numhalos,halodata,TEMPORALHALOIDVAL)
+				BuildTemporalHeadTailDescendant(numsnaps,rawtreedata,numhalos,halodata,TEMPORALHALOIDVAL)
 			else:
-				BuildTemporalHeadTail(numsnaps,tree,numhalos,halodata,TEMPORALHALOIDVAL)
+				BuildTemporalHeadTail(numsnaps,rawtreedata,numhalos,halodata,TEMPORALHALOIDVAL)
 	if (ibuildforest):
 		GenerateForest(numsnaps,numhalos,halodata,atime,TEMPORALHALOIDVAL)
 	totnumhalos=sum(numhalos)
-	if (icombinefile==1):
+	if (True):
 		hdffile=h5py.File(fname+".hdf.data",'w')
 		headergrp=hdffile.create_group("Header")
 		#store useful information such as number of snapshots, halos,
