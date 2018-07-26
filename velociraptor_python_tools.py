@@ -2438,7 +2438,7 @@ Code to use individual snapshot files and merge them together into a full unifie
 def WriteUnifiedTreeandHaloCatalog(fname, numsnaps, rawtreedata, numhalos, halodata, atime,
                                    descripdata={'Title': 'Tree and Halo catalog of sim', 'VELOCIraptor_version': 1.15, 'Tree_version': 1.1,
                                                 'Particle_num_threshold': 20, 'Temporal_linking_length': 1, 'Flag_gas': False, 'Flag_star': False, 'Flag_bh': False},
-                                   cosmodata={'Omega_m': 1.0, 'Omega_b': 0., 'Omega_Lambda': 0.,
+                                   siminfo={'Omega_m': 1.0, 'Omega_b': 0., 'Omega_Lambda': 0.,
                                               'Hubble_param': 1.0, 'BoxSize': 1.0, 'Sigma8': 1.0},
                                    unitdata={'UnitLength_in_Mpc': 1.0, 'UnitVelocity_in_kms': 1.0,
                                              'UnitMass_in_Msol': 1.0, 'Flag_physical_comoving': True, 'Flag_hubble_flow': False},
@@ -2461,8 +2461,18 @@ def WriteUnifiedTreeandHaloCatalog(fname, numsnaps, rawtreedata, numhalos, halod
 
     """
     # check to see in tree data already present in halo catalog
-    treekeys = ["RootHead", "RootHeadSnap", "Head", "HeadSnap",
-                "Tail", "TailSnap", "RootTail", "RootTailSnap"]
+    treekeys = ["RootHead", "RootHeadSnap",
+                "Head", "HeadSnap",
+                "RootTail", "RootTailSnap",
+                "Tail", "TailSnap"
+                ]
+    # alias names of the tree
+    treealiaskeys= ['FinalDescendant', 'FinalDescendantSnap',
+                    'Descendant', 'DescendantSnap',
+                    'FirstProgenitor', 'FirstProgenitorSnap',
+                    'Progenitor', 'ProgenitorSnap'
+                    ]
+    treealiasnames=dict(zip(treekeys,treealiaskeys))
 
     if (ibuildheadtail):
         if (set(treekeys).issubset(set(halodata[0].keys())) == False):
@@ -2486,10 +2496,10 @@ def WriteUnifiedTreeandHaloCatalog(fname, numsnaps, rawtreedata, numhalos, halod
     # overall description
     # simulation box size
 
-    # cosmological params
-    cosmogrp = headergrp.create_group("Cosmology")
-    for key in cosmodata.keys():
-        cosmogrp.attrs[key] = cosmodata[key]
+    # simulation params
+    simgrp = headergrp.create_group("Simulation")
+    for key in simdata.keys():
+        simgrp.attrs[key] = simdata[key]
     # unit params
     unitgrp = headergrp.create_group("Units")
     for key in unitdata.keys():
@@ -2501,16 +2511,20 @@ def WriteUnifiedTreeandHaloCatalog(fname, numsnaps, rawtreedata, numhalos, halod
     partgrp.attrs["Flag_bh"] = descripdata["Flag_bh"]
 
     for i in range(numsnaps):
+
         if (ireversesnaporder == True):
-            snapgrp = hdffile.create_group("Snap_%03d" % (numsnaps-1-i))
+            snapnum=(numsnaps-1-i)
         else :
-            snapgrp = hdffile.create_group("Snap_%03d" % i)
-        snapgrp.attrs["Snapnum"] = (numsnaps-1-i)
+            snapnum=i
+        snapgrp = hdffile.create_group("Snap_%03d" % snapnum)
+        snapgrp.attrs["Snapnum"] = snapnum
         snapgrp.attrs["NHalos"] = numhalos[i]
         snapgrp.attrs["scalefactor"] = atime[i]
         for key in halodata[i].keys():
             snapgrp.create_dataset(
                 key, data=halodata[i][key], compression="gzip", compression_opts=6)
+        for key in treekeys:
+            snapgrp[treealiaskeys(key)]=snapgrp[key]
     hdffile.close()
 
 
@@ -2764,16 +2778,16 @@ def ReadUnifiedTreeandHaloCatalog(fname, desiredfields=[], iverbose=False, ireve
     numhalos = [0 for i in range(numsnaps)]
     atime = [0 for i in range(numsnaps)]
     tree = [[] for i in range(numsnaps)]
-    cosmodata = dict()
+    simdata = dict()
     unitdata = dict()
 
-    # load cosmology data
-    cosmogrpname = "Cosmology/"
+    # load simulation (cosmology data
+    simgrpname = "Simulation/"
     fieldnames = [str(n)
-                  for n in hdffile[headergrpname+cosmogrpname].attrs.keys()]
+                  for n in hdffile[headergrpname+simgrpname].attrs.keys()]
     for fieldname in fieldnames:
-        cosmodata[fieldname] = hdffile[headergrpname +
-                                       cosmogrpname].attrs[fieldname]
+        simdata[fieldname] = hdffile[headergrpname +
+                                       simgrpname].attrs[fieldname]
 
     # load unit data
     unitgrpname = "Units/"
@@ -2804,6 +2818,7 @@ def ReadUnifiedTreeandHaloCatalog(fname, desiredfields=[], iverbose=False, ireve
                 hdffile[snapgrpname+catvalue])
     hdffile.close()
     print("read halo data ", time.clock()-start)
+    return halodata, numhalos, atime, simdata, unitdata
 
 
 def WriteWalkableHDFTree(fname, numsnaps, tree, numhalos, halodata, atime,
@@ -2904,7 +2919,7 @@ def ReadWalkableHDFTree(fname, iverbose=True):
 def FixTruncationBranchSwapsInTreeDescendantAndWrite(rawtreefname, reducedtreename, snapproplistfname, outputupdatedreducedtreename,
                                                      descripdata={'Title': 'Tree catalogue', 'VELOCIraptor_version': 1.3, 'Tree_version': 1.1,
                                                                   'Particle_num_threshold': 20, 'Temporal_linking_length': 1, 'Flag_gas': False, 'Flag_star': False, 'Flag_bh': False},
-                                                     npartlim=200, meritlim=0.025, xdifflim=2.0, vdifflim=1.0, snapsearch=4,
+                                                     npartlim=200, meritlim=0.025, xdifflim=2.0, vdifflim=1.0, nsnapsearch=4,
                                                      TEMPORALHALOIDVAL=1000000000000,
                                                      ibuildtree=False, inputtreeformat=2, inputpropformat=2, inputpropsplitformat=0):
     """
@@ -2933,7 +2948,7 @@ def FixTruncationBranchSwapsInTreeDescendantAndWrite(rawtreefname, reducedtreena
             snapfile, inputpropformat, inputpropsplitformat, 0, proplist)
         halodata[i].update(halotemp)
     halodata = FixTruncationBranchSwapsInTreeDescendant(numsnaps, rawtreedata, halodata, numhalos,
-                                                        npartlim, meritlim, xdifflim, vdifflim, snapsearch,
+                                                        npartlim, meritlim, xdifflim, vdifflim, nsnapsearch,
                                                         TEMPORALHALOIDVAL)
     WriteWalkableHDFTree(outputupdatedreducedtreename, numsnaps,
                          rawtreedata, numhalos, halodata, atime, descripdata)
@@ -2941,14 +2956,13 @@ def FixTruncationBranchSwapsInTreeDescendantAndWrite(rawtreefname, reducedtreena
 
 
 def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numhalos,
-                                             npartlim=200, meritlim=0.025, xdifflim=2.0, vdifflim=1.0, snapsearch=4,
+                                             npartlim=200, meritlim=0.025, xdifflim=2.0, vdifflim=1.0, nsnapsearch=4,
                                              TEMPORALHALOIDVAL=1000000000000, iverbose=0):
     """
     Updates the walkable tree information stored with the halo data
     by using the raw tree produced by TreeFrog to correct any branch swap events leading to truncation
     Requires full roothead/root tail information to correctly fix. Also requires full
     raw tre information with merits and secondary rank descendants.
-
     """
     start = time.clock()
     print('Starting to fix branches')
@@ -2998,9 +3012,9 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
                 print('halo with no progenitor', haloID, halodata[i]['npart'][inoprog], halodata[i]['Structuretype'][inoprog],
                       haloHost, halodata[i]['Head'][inoprog],
                       halodata[np.uint32(halodata[i]['Head'][inoprog]/TEMPORALHALOIDVAL)]['Tail'][np.uint64(halodata[i]['Head'][inoprog] % TEMPORALHALOIDVAL-1)])
-            # first lets see if any halos previous to this point with a snapsearch radius
+            # first lets see if any halos previous to this point with a nsnapsearch radius
             # point to halo with no progenitor as a high merit, 1 rank connection.
-            searchrange = max(0, i-snapsearch)
+            searchrange = max(0, i-nsnapsearch)
             mergeHalo = -1
             mergeMerit = -1
             for isearch in range(searchrange, i):
@@ -3064,7 +3078,7 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
             curHalo = premergeHalo
             curSnap = np.uint64(curHalo/TEMPORALHALOIDVAL)
             curIndex = np.uint64(curHalo % TEMPORALHALOIDVAL-1)
-            searchrange = max(0, curSnap-snapsearch)
+            searchrange = max(0, curSnap-nsnapsearch)
             while(curSnap >= searchrange and halodata[curSnap]['Tail'][curIndex] != curHalo):
                 curHost = halodata[curSnap]['hostHaloID'][curIndex]
                 if (curHost == -1):
