@@ -2438,7 +2438,7 @@ Code to use individual snapshot files and merge them together into a full unifie
 def WriteUnifiedTreeandHaloCatalog(fname, numsnaps, rawtreedata, numhalos, halodata, atime,
                                    descripdata={'Title': 'Tree and Halo catalog of sim', 'VELOCIraptor_version': 1.15, 'Tree_version': 1.1,
                                                 'Particle_num_threshold': 20, 'Temporal_linking_length': 1, 'Flag_gas': False, 'Flag_star': False, 'Flag_bh': False},
-                                   siminfo={'Omega_m': 1.0, 'Omega_b': 0., 'Omega_Lambda': 0.,
+                                   simdata={'Omega_m': 1.0, 'Omega_b': 0., 'Omega_Lambda': 0.,
                                               'Hubble_param': 1.0, 'BoxSize': 1.0, 'Sigma8': 1.0},
                                    unitdata={'UnitLength_in_Mpc': 1.0, 'UnitVelocity_in_kms': 1.0,
                                              'UnitMass_in_Msol': 1.0, 'Flag_physical_comoving': True, 'Flag_hubble_flow': False},
@@ -2521,10 +2521,10 @@ def WriteUnifiedTreeandHaloCatalog(fname, numsnaps, rawtreedata, numhalos, halod
         snapgrp.attrs["NHalos"] = numhalos[i]
         snapgrp.attrs["scalefactor"] = atime[i]
         for key in halodata[i].keys():
-            snapgrp.create_dataset(
+            halogrp=snapgrp.create_dataset(
                 key, data=halodata[i][key], compression="gzip", compression_opts=6)
-        for key in treekeys:
-            snapgrp[treealiaskeys(key)]=snapgrp[key]
+            if key in treekeys:
+                snapgrp[treealiasnames[key]]=halogrp
     hdffile.close()
 
 
