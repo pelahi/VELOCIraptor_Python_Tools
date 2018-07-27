@@ -1941,7 +1941,8 @@ def GenerateSubhaloLinks(numsnaps, numhalos, halodata, TEMPORALHALOIDVAL=1000000
     print("Done subhalolinks ", time.clock()-start)
 
 
-def GenerateProgenitorLinks(numsnaps, numhalos, halodata, ireversesnaporder=False, nsnapsearch=4, TEMPORALHALOIDVAL=1000000000000, iverbose=1):
+def GenerateProgenitorLinks(numsnaps, numhalos, halodata, ireversesnaporder=False, 
+                            nsnapsearch=4, TEMPORALHALOIDVAL=1000000000000, iverbose=0):
     """
     This code generates a quick way of moving across a halo's progenitor list storing a the next/previous progenitor
 
@@ -2009,9 +2010,11 @@ def GenerateProgenitorLinks(numsnaps, numhalos, halodata, ireversesnaporder=Fals
             idx], progenssnaps[idx], progensheads[idx], progensids[idx]
         # now move along the length of the progen array to set up current and previous
         activehead = progensheads[0]
-        prevprog, nextprog = -1, progensids[0]
+        #prevprog, nextprog = -1, progensids[0]
+        prevprog, nextprog = progensids[0], progensids[0]
         index, snap = progens[0], progenssnaps[0]
-        halodata[snap]['LeftTail'][index] = -1
+        #halodata[snap]['LeftTail'][index] = -1
+        halodata[snap]['LeftTail'][index] = halodata[snap]['ID'][index]
         for iprog in range(1, nprogs-1):
             index, snap = progens[iprog], progenssnaps[iprog]
             nextindex, nextsnap = progens[iprog+1], progenssnaps[iprog+1]
@@ -2019,10 +2022,16 @@ def GenerateProgenitorLinks(numsnaps, numhalos, halodata, ireversesnaporder=Fals
             curhead = progensheads[iprog]
             if (curhead != activehead):
                 #print(activehead, curhead, index, snap, prevprog, nextprog)
+                #nextprog = -1
+                #halodata[snap]['LeftTail'][index] = -1
+                #halodata[prevsnap]['RightTail'][previndex] = -1
+                #prevprog = -1
+
                 nextprog = -1
-                halodata[snap]['LeftTail'][index] = -1
-                halodata[prevsnap]['RightTail'][previndex] = -1
-                prevprog = -1
+                halodata[snap]['LeftTail'][index] = halodata[snap]['ID'][index]
+                halodata[prevsnap]['RightTail'][previndex] = halodata[prevsnap]['ID'][previndex]
+                prevprog = halodata[snap]['ID'][index]
+
                 activehead = curhead
                 # break
             else:
@@ -2032,14 +2041,16 @@ def GenerateProgenitorLinks(numsnaps, numhalos, halodata, ireversesnaporder=Fals
                 prevprog = progensids[iprog]
         curhead = progensheads[-1]
         index, snap = progens[-1], progenssnaps[-1]
-        halodata[snap]['RightTail'][index] = -1
+        #halodata[snap]['RightTail'][index] = -1
+        halodata[snap]['RightTail'][index] = halodata[snap]['ID'][index]
         if (iverbose):
             print("Done snap", j, time.clock()-start2)
     print("Done progenitor links ", time.clock()-start)
 
 
 def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
-                   ireversesnaporder=False, TEMPORALHALOIDVAL=1000000000000, iverbose=1, interactiontime=2, ispatialintflag=False, pos_tree=[], cosmo=dict()):
+                   ireversesnaporder=False, TEMPORALHALOIDVAL=1000000000000, iverbose=1, 
+                   interactiontime=2, ispatialintflag=False, pos_tree=[], cosmo=dict()):
     """
     This code traces all root heads back in time identifying all interacting haloes and bundles them together into the same forest id
     The idea is to have in the halodata dictionary an associated unique forest id for all related (sub)haloes. The code also allows
@@ -2436,14 +2447,16 @@ Code to use individual snapshot files and merge them together into a full unifie
 
 
 def WriteUnifiedTreeandHaloCatalog(fname, numsnaps, rawtreedata, numhalos, halodata, atime,
-                                   descripdata={'Title': 'Tree and Halo catalog of sim', 'VELOCIraptor_version': 1.15, 'Tree_version': 1.1,
-                                                'Particle_num_threshold': 20, 'Temporal_linking_length': 1, 'Flag_gas': False, 'Flag_star': False, 'Flag_bh': False},
-                                   siminfo={'Omega_m': 1.0, 'Omega_b': 0., 'Omega_Lambda': 0.,
+                                   descripdata={'Title': 'Tree and Halo catalog of sim', 'HaloFinder': 'VELOCIraptor', 'Halo_Finder_version': 1.15, 'TreeBuilder': 'TreeFrog', 'Tree_version': 1.1,
+                                                'Particle_num_threshold': 20, 'Temporal_linking_length': 1, 'Flag_gas': False, 'Flag_star': False, 'Flag_bh': False,
+                                                'Flag_subhalo_links':False, 'Flag_progenitor_links':False, 'Flag_forest_ids':False},
+                                   simdata={'Omega_m': 1.0, 'Omega_b': 0., 'Omega_Lambda': 0.,
                                               'Hubble_param': 1.0, 'BoxSize': 1.0, 'Sigma8': 1.0},
                                    unitdata={'UnitLength_in_Mpc': 1.0, 'UnitVelocity_in_kms': 1.0,
                                              'UnitMass_in_Msol': 1.0, 'Flag_physical_comoving': True, 'Flag_hubble_flow': False},
                                    partdata={'Flag_gas': False,
-                                             'Flag_star': False, 'Flag_bh': False},
+                                             'Flag_star': False, 'Flag_bh': False,
+                                             'Particle_mass':{'DarkMatter':-1, 'Gas':-1, 'Star':-1, 'SMBH':-1}},
                                    ibuildheadtail=False,
                                    ibuildforest=False,
                                    idescen=True,
@@ -2476,6 +2489,7 @@ def WriteUnifiedTreeandHaloCatalog(fname, numsnaps, rawtreedata, numhalos, halod
 
     if (ibuildheadtail):
         if (set(treekeys).issubset(set(halodata[0].keys())) == False):
+            print('building tree')
             if (idescen):
                 BuildTemporalHeadTailDescendant(
                     numsnaps, rawtreedata, numhalos, halodata, TEMPORALHALOIDVAL)
@@ -2493,8 +2507,22 @@ def WriteUnifiedTreeandHaloCatalog(fname, numsnaps, rawtreedata, numhalos, halod
     # and TEMPORALHALOIDVAL used to traverse tree information (converting halo ids to haloindex or snapshot), Reverse_order [1/0] for last snap listed first)
     # set the attributes of the header
     headergrp.attrs["NSnaps"] = numsnaps
-    # overall description
-    # simulation box size
+    headergrp.attrs["Flag_subhalo_links"] = descripdata["Flag_subhalo_links"]
+    headergrp.attrs["Flag_progenitor_links"] = descripdata["Flag_progenitor_links"]
+    headergrp.attrs["Flag_forest_ids"] = descripdata["Flag_forest_ids"]
+
+    # overall halo finder and tree builder description
+    findergrp = headergrp.create_group("HaloFinder")
+    findergrp.attrs["Name"] = descripdata["HaloFinder"] 
+    findergrp.attrs["Version"] = descripdata["HaloFinder_version"]
+    findergrp.attrs["Particle_num_threshold"] = descripdata["Particle_num_threshold"]
+
+    treebuildergrp = headergrp.create_group("TreeBuilder")
+    treebuildergrp.attrs["Name"] = descripdata["TreeBuilder"]
+    treebuildergrp.attrs["Version"] = descripdata["TreeBuilder_version"]
+    treebuildergrp.attrs["Temporal_linking_length"] = descripdata["Temporal_linking_length"]
+    treebuildergrp.attrs["Temporal_halo_id_value"] = descripdata["Temporal_halo_id_value"]
+
 
     # simulation params
     simgrp = headergrp.create_group("Simulation")
@@ -2509,6 +2537,9 @@ def WriteUnifiedTreeandHaloCatalog(fname, numsnaps, rawtreedata, numhalos, halod
     partgrp.attrs["Flag_gas"] = descripdata["Flag_gas"]
     partgrp.attrs["Flag_star"] = descripdata["Flag_star"]
     partgrp.attrs["Flag_bh"] = descripdata["Flag_bh"]
+    partmassgrp = headergrp.create_group("Particle_mass")
+    for key in partdata['Particle_mass'].keys():
+        partmassgrp.attrs[key] = partdata['Particle_mass'][key]
 
     for i in range(numsnaps):
 
@@ -2520,11 +2551,12 @@ def WriteUnifiedTreeandHaloCatalog(fname, numsnaps, rawtreedata, numhalos, halod
         snapgrp.attrs["Snapnum"] = snapnum
         snapgrp.attrs["NHalos"] = numhalos[i]
         snapgrp.attrs["scalefactor"] = atime[i]
+        print("writing snapshot ",snapnum)
         for key in halodata[i].keys():
-            snapgrp.create_dataset(
+            halogrp=snapgrp.create_dataset(
                 key, data=halodata[i][key], compression="gzip", compression_opts=6)
-        for key in treekeys:
-            snapgrp[treealiaskeys(key)]=snapgrp[key]
+            if key in treekeys:
+                snapgrp[treealiasnames[key]]=halogrp
     hdffile.close()
 
 
@@ -2535,8 +2567,6 @@ def WriteCombinedUnifiedTreeandHaloCatalog(fname, numsnaps, rawtree, numhalos, h
                                                       'Hubble_param': 1.0, 'BoxSize': 1.0, 'Sigma8': 1.0},
                                            unitdata={'UnitLength_in_Mpc': 1.0, 'UnitVelocity_in_kms': 1.0,
                                                      'UnitMass_in_Msol': 1.0, 'Flag_physical_comoving': True, 'Flag_hubble_flow': False},
-                                           partdata={
-                                               'Flag_gas': False, 'Flag_star': False, 'Flag_bh': False},
                                            ibuildheadtail=0, ibuildmajormergers=0, TEMPORALHALOIDVAL=1000000000000):
     """
     produces a unifed HDF5 formatted file containing the full catalog plus information to walk the tree
@@ -2783,6 +2813,7 @@ def ReadUnifiedTreeandHaloCatalog(fname, desiredfields=[], iverbose=False, ireve
 
     # load simulation (cosmology data
     simgrpname = "Simulation/"
+    simgrpname = "Cosmology/"
     fieldnames = [str(n)
                   for n in hdffile[headergrpname+simgrpname].attrs.keys()]
     for fieldname in fieldnames:
@@ -2822,8 +2853,8 @@ def ReadUnifiedTreeandHaloCatalog(fname, desiredfields=[], iverbose=False, ireve
 
 
 def WriteWalkableHDFTree(fname, numsnaps, tree, numhalos, halodata, atime,
-                         descripdata={'Title': 'Tree catalogue', 'VELOCIraptor_version': 1.3, 'Tree_version': 1.1,
-                                      'Particle_num_threshold': 20, 'Temporal_linking_length': 1, 'Flag_gas': False, 'Flag_star': False, 'Flag_bh': False}
+                         descripdata={'Title': 'Tree catalogue', 'TreeBuilder': 'TreeFrog', 'TreeBuilder_version': 1.2,
+                                      'Particle_num_threshold': 20, 'Temporal_linking_length': 1, 'Temporal_halo_id_value':1000000000000}
                          ):
     """
     Produces a HDF5 formatted file containing Reduced Walkable Tree information,
@@ -2853,27 +2884,19 @@ def WriteWalkableHDFTree(fname, numsnaps, tree, numhalos, halodata, atime,
     """
     hdffile = h5py.File(fname, 'w')
     headergrp = hdffile.create_group("Header")
-    # store useful information such as number of snapshots, halos,
-    # cosmology (Omega_m, Omega_b, Hubble_param, Omega_Lambda, Box size)
-    # units (Physical [1/0] for physical/comoving flag, length in Mpc, km/s, solar masses, Gravity
-    # and TEMPORALHALOIDVAL used to traverse tree information (converting halo ids to haloindex or snapshot), Reverse_order [1/0] for last snap listed first)
-    # set the attributes of the header
+    # set the attributes of the header, store useful information regarding the tree 
     headergrp.attrs["NSnaps"] = numsnaps
     # overall description
     headergrp.attrs["Title"] = descripdata["Title"]
-    findergrp = headergrp.create_group("HaloFinder")
-    findergrp.attrs["Name"] = "VELOCIraptor"
-    findergrp.attrs["Version"] = descripdata["VELOCIraptor_version"]
-    findergrp.attrs["Particle_num_threshold"] = descripdata["Particle_num_threshold"]
-
     treebuildergrp = headergrp.create_group("TreeBuilder")
-    treebuildergrp.attrs["Name"] = "VELOCIraptor-Tree"
-    treebuildergrp.attrs["Version"] = descripdata["Tree_version"]
+    treebuildergrp.attrs["Name"] = descripdata["TreeBuilder"]
+    treebuildergrp.attrs["Version"] = descripdata["TreeBuilder_version"]
     treebuildergrp.attrs["Temporal_linking_length"] = descripdata["Temporal_linking_length"]
+    treebuildergrp.attrs["Temporal_halo_id_value"] = descripdata["Temporal_halo_id_value"]
 
     # now need to create groups for halos and then a group containing tree information
     snapsgrp = hdffile.create_group("Snapshots")
-    # internal tree keys
+    # tree keys of interest
     halokeys = ["RootHead", "RootHeadSnap", "Head", "HeadSnap", "Tail",
                 "TailSnap", "RootTail", "RootTailSnap", "ID", "Num_progen"]
 
