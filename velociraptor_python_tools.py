@@ -456,7 +456,9 @@ def ReadHaloMergerTree(treefilename, ibinary=0, iverbose=0, imerit=False, inpart
     return tree
 
 
-def ReadHaloMergerTreeDescendant(treefilename, ireverseorder=True, ibinary=0, iverbose=0, imerit=False, inpart=False):
+def ReadHaloMergerTreeDescendant(treefilename, ireverseorder=False, ibinary=0,
+                                 iverbose=0, imerit=False, inpart=False,
+                                 ireducedtobestranks=False, meritlimit=0.025):
     """
     VELOCIraptor/STF descendant based merger tree in ascii format contains
     a header with
@@ -569,6 +571,19 @@ def ReadHaloMergerTreeDescendant(treefilename, ireverseorder=True, ibinary=0, iv
                         if (inpart):
                             tree[ii]["Npart_descen"][j][k] = np.uint32(data[3])
 
+                if (ireducedtobestranks): 
+                    halolist=np.where(tree[snap]["Num_descen"]>1)[0]
+                    for ihalo in halolist:
+                        numdescen = 1
+                        if (imerit):
+                            numdescen = np.int32(np.max([1,np.argmax(tree[snap]["Merit"][ihalo]<meritlimit)]))
+                        tree[snap]["Num_descen"][ihalo] = numdescen
+                        tree[snap]["Descen"][ihalo] = np.array([tree[snap]["Descen"][ihalo][:numdescen]])
+                        tree[snap]["Rank"][ihalo] = np.array([tree[snap]["Rank"][ihalo][:numdescen]])
+                        if (imerit):
+                            tree[snap]["Merit"][ihalo] = np.array([tree[snap]["Merit"][ihalo][:numdescen]])
+                        if (inpart):
+                            tree[snap]["Npart_descen"][ihalo] = np.array([tree[snap]["Npart_descen"][ihalo][:numdescen]])
     # hdf format
     elif(ibinary == 2):
 
@@ -588,7 +603,7 @@ def ReadHaloMergerTreeDescendant(treefilename, ireverseorder=True, ibinary=0, iv
             tree[snap]["haloID"] = np.array(treedata["ID"])
             tree[snap]["Num_descen"] = np.array(treedata["NumDesc"])
             if(inpart):
-                tree[snap]["Npart"] = np.asarray(treedata["Npart"])
+                tree[snap]["Npart"] = np.asarray(treedata["Npart"],np.int32)
 
             # See if the dataset exits
             if("DescOffsets" in treedata.keys()):
@@ -598,16 +613,33 @@ def ReadHaloMergerTreeDescendant(treefilename, ireverseorder=True, ibinary=0, iv
                     treedata["DescOffsets"]), tree[snap]["Num_descen"], dtype=np.uint64, casting="unsafe")
 
                 # Read in the data splitting it up as reading it in
-                tree[snap]["Rank"] = np.split(treedata["Ranks"][:], split[:-1])
+                tree[snap]["Rank"] = np.split(np.array(treedata["Ranks"][:],dtype=np.uint16), split[:-1])
                 tree[snap]["Descen"] = np.split(
                     treedata["Descendants"][:], split[:-1])
 
                 if(inpart):
-                    tree[snap]["Npart_progen"] = np.split(
-                        treedata["ProgenNpart"][:], split[:-1])
+                    tree[snap]["Npart_decen"] = np.split(
+                        np.array(treedata["DescenNpart"][:],np.int16), split[:-1])
                 if(imerit):
                     tree[snap]["Merit"] = np.split(
-                        treedata["Merits"][:], split[:-1])
+                        np.array(treedata["Merits"][:],np.float32), split[:-1])
+                #if reducing stuff down to best ranks, then only keep first descendant
+                #unless also reading merit and then keep first descendant and all other descendants that are above a merit limit
+                if (ireducedtobestranks): 
+                    halolist=np.where(tree[snap]["Num_descen"]>1)[0]
+                    for ihalo in halolist:
+                        numdescen = 1
+                        if (imerit):
+                            numdescen = np.int32(np.max([1,np.argmax(tree[snap]["Merit"][ihalo]<meritlimit)]))
+                        tree[snap]["Num_descen"][ihalo] = numdescen
+                        tree[snap]["Descen"][ihalo] = np.array([tree[snap]["Descen"][ihalo][:numdescen]])
+                        tree[snap]["Rank"][ihalo] = np.array([tree[snap]["Rank"][ihalo][:numdescen]])
+                        if (imerit):
+                            tree[snap]["Merit"][ihalo] = np.array([tree[snap]["Merit"][ihalo][:numdescen]])
+                        if (inpart):
+                            tree[snap]["Npart_descen"][ihalo] = np.array([tree[snap]["Npart_descen"][ihalo][:numdescen]])
+            treedata.close()
+
 
         snaptreelist.close()
 
@@ -1236,10 +1268,10 @@ def BuildTemporalHeadTail(numsnaps, tree, numhalos, halodata, TEMPORALHALOIDVAL=
         halodata[k]['Descendant'] = halodata[k]['Head']
         halodata[k]['DescendantSnap'] = halodata[k]['HeadSnap']
         halodata[k]['ProgenitorSnap'] = halodata[k]['TailSnap']
-        halodata[k]['FirstProgenitor'] = halodata[k]['RootTail']
-        halodata[k]['FirstProgenitorSnap'] = halodata[k]['RootTailSnap']
-        halodata[k]['LastDescendant'] = halodata[k]['RootHead']
-        halodata[k]['LastDescendantSnap'] = halodata[k]['RootHeadSnap']
+        halodata[k]['RootProgenitor'] = halodata[k]['RootTail']
+        halodata[k]['RootProgenitorSnap'] = halodata[k]['RootTailSnap']
+        halodata[k]['RootDescendant'] = halodata[k]['RootHead']
+        halodata[k]['RootDescendantSnap'] = halodata[k]['RootHeadSnap']
     # for each snapshot identify halos that have not had their tail set
     # for these halos, the main branch must be walked
     # allocate python manager to wrapper the tree and halo catalog so they can be altered in parallel
@@ -1911,8 +1943,8 @@ def GenerateSubhaloLinks(numsnaps, numhalos, halodata, TEMPORALHALOIDVAL=1000000
     """
     for j in range(numsnaps):
         # store id and snap and mass of last major merger and while we're at it, store number of major mergers
-        halodata[j]["NextSubhalo"] = np.zeros(numhalos[j], dtype=np.int64)
-        halodata[j]["PreviousSubhalo"] = np.zeros(numhalos[j], dtype=np.int64)
+        halodata[j]["NextSubhalo"] = copy.deepcopy(halodata[j]["ID"])
+        halodata[j]["PreviousSubhalo"] = copy.deepcopy(halodata[j]["ID"])
     # iterate over all host halos and set their subhalo links
     start = time.clock()
     nthreads = 1
@@ -1958,8 +1990,8 @@ def GenerateProgenitorLinks(numsnaps, numhalos, halodata, ireversesnaporder=Fals
 
     for j in range(numsnaps):
         # store id and snap and mass of last major merger and while we're at it, store number of major mergers
-        halodata[j]["LeftTail"] = np.ones(numhalos[j], dtype=np.int64)*-1
-        halodata[j]["RightTail"] = np.ones(numhalos[j], dtype=np.int64)*-1
+        halodata[j]["LeftTail"] = copy.deepcopy(halodata[j]["ID"]) 
+        halodata[j]["RightTail"] = copy.deepcopy(halodata[j]["ID"])
         # alias the data
         halodata[j]["PreviousProgenitor"] = halodata[j]["LeftTail"]
         halodata[j]["NextProgenitor"] = halodata[j]["RightTail"]
@@ -2002,7 +2034,6 @@ def GenerateProgenitorLinks(numsnaps, numhalos, halodata, ireversesnaporder=Fals
         progensheads = np.array(np.concatenate(progensheads), dtype=np.int64)
         progensids = np.array(np.concatenate(progensids), dtype=np.int64)
         nprogs = len(progens)
-        print(j, numhalos[j+1], nprogs)
         if (nprogs < 2):
             continue
         idx = np.argsort(progensheads)
@@ -2021,19 +2052,12 @@ def GenerateProgenitorLinks(numsnaps, numhalos, halodata, ireversesnaporder=Fals
             previndex, prevsnap = progens[iprog-1], progenssnaps[iprog-1]
             curhead = progensheads[iprog]
             if (curhead != activehead):
-                #print(activehead, curhead, index, snap, prevprog, nextprog)
-                #nextprog = -1
-                #halodata[snap]['LeftTail'][index] = -1
-                #halodata[prevsnap]['RightTail'][previndex] = -1
-                #prevprog = -1
 
-                nextprog = -1
                 halodata[snap]['LeftTail'][index] = halodata[snap]['ID'][index]
                 halodata[prevsnap]['RightTail'][previndex] = halodata[prevsnap]['ID'][previndex]
                 prevprog = halodata[snap]['ID'][index]
 
                 activehead = curhead
-                # break
             else:
                 nextprog = progensids[iprog]
                 halodata[snap]['LeftTail'][index] = prevprog
@@ -2041,7 +2065,6 @@ def GenerateProgenitorLinks(numsnaps, numhalos, halodata, ireversesnaporder=Fals
                 prevprog = progensids[iprog]
         curhead = progensheads[-1]
         index, snap = progens[-1], progenssnaps[-1]
-        #halodata[snap]['RightTail'][index] = -1
         halodata[snap]['RightTail'][index] = halodata[snap]['ID'][index]
         if (iverbose):
             print("Done snap", j, time.clock()-start2)
