@@ -2447,14 +2447,9 @@ Code to use individual snapshot files and merge them together into a full unifie
 
 
 def WriteUnifiedTreeandHaloCatalog(fname, numsnaps, rawtreedata, numhalos, halodata, atime,
-<<<<<<< HEAD
                                    descripdata={'Title': 'Tree and Halo catalog of sim', 'HaloFinder': 'VELOCIraptor', 'Halo_Finder_version': 1.15, 'TreeBuilder': 'TreeFrog', 'Tree_version': 1.1,
                                                 'Particle_num_threshold': 20, 'Temporal_linking_length': 1, 'Flag_gas': False, 'Flag_star': False, 'Flag_bh': False,
                                                 'Flag_subhalo_links':False, 'Flag_progenitor_links':False, 'Flag_forest_ids':False},
-=======
-                                   descripdata={'Title': 'Tree and Halo catalog of sim', 'VELOCIraptor_version': 1.15, 'Tree_version': 1.1,
-                                                'Particle_num_threshold': 20, 'Temporal_linking_length': 1, 'Flag_gas': False, 'Flag_star': False, 'Flag_bh': False},
->>>>>>> 7cfaa361246832683da283b54448f570409d02bc
                                    simdata={'Omega_m': 1.0, 'Omega_b': 0., 'Omega_Lambda': 0.,
                                               'Hubble_param': 1.0, 'BoxSize': 1.0, 'Sigma8': 1.0},
                                    unitdata={'UnitLength_in_Mpc': 1.0, 'UnitVelocity_in_kms': 1.0,
