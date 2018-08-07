@@ -455,10 +455,27 @@ def ReadHaloMergerTree(treefilename, ibinary=0, iverbose=0, imerit=False, inpart
         print("done reading tree file ", time.clock()-start)
     return tree
 
+class MinStorageList():
+    """
+    This uses two smaller arrays to access a large contiguous array and return subchunks
+    """
+    Num,Offset=None,None
+    Data=None
+    def __init__(self,nums,offsets,rawdata):
+        self.Num=nums
+        self.Offset=offsets
+        self.Data=rawdata
+    def __getitem__(self, index):
+        if self.Num[index] == 0 :
+            return np.array([])
+        else :
+            return self.Data[self.Offset[index]:self.Offset[index]+self.Num[index]]
+
 
 def ReadHaloMergerTreeDescendant(treefilename, ireverseorder=False, ibinary=0,
                                  iverbose=0, imerit=False, inpart=False,
-                                 ireducedtobestranks=False, meritlimit=0.025):
+                                 ireducedtobestranks=False, meritlimit=0.025,
+                                 ireducemem=True):
     """
     VELOCIraptor/STF descendant based merger tree in ascii format contains
     a header with
@@ -595,13 +612,37 @@ def ReadHaloMergerTreeDescendant(treefilename, ireverseorder=False, ibinary=0,
         treedata.close()
         snaptreelist.close()
         snaptreelist = open(treefilename, 'r')
+        snaptreenames=[[] for snap in range(numsnap)]
         for snap in range(numsnap):
-            snaptreename = snaptreelist.readline().strip()+".tree"
+            snaptreenames[snap] = snaptreelist.readline().strip()+".tree"
+        snaptreelist.close()
+
+        if (iverbose):
+            snaptreename = snaptreenames[0]
+            treedata = h5py.File(snaptreename, "r")
+            numhalos = treedata.attrs["Total_number_of_halos"]
+            memsize = np.uint64(1).nbytes*2.0+np.uint16(0).nbytes*2.0
+            if (inpart):
+                memsize += np.int32(0).nbytes*2.0
+            if (imerit):
+                memsize += np.float32(0).nbytes
+            memsize *= numhalos
+            if (ireducemem): 
+                print("Reducing memory, changes api.")
+                print("Data contains ", numhalos, "halos and will likley minimum ", memsize/1024.**3.0, "GB of memory")
+            else: 
+                print("Contains ", numhalos, "halos and will likley minimum ", memsize/1024.**3.0, "GB of memory")
+                print("Plus overhead to store list of arrays, with likely minimum of ",100*numhalos/1024**3.0, "GB of memory ")
+            treedata.close()
+        for snap in range(numsnap):
+            snaptreename = snaptreenames[snap]
+
             if (iverbose):
                 print("Reading", snaptreename)
             treedata = h5py.File(snaptreename, "r")
             tree[snap]["haloID"] = np.array(treedata["ID"])
-            tree[snap]["Num_descen"] = np.array(treedata["NumDesc"])
+            tree[snap]["Num_descen"] = np.array(treedata["NumDesc"],np.uint16)
+            numhalos=tree[snap]["haloID"].size
             if(inpart):
                 tree[snap]["Npart"] = np.asarray(treedata["Npart"],np.int32)
 
@@ -609,24 +650,45 @@ def ReadHaloMergerTreeDescendant(treefilename, ireverseorder=False, ibinary=0,
             if("DescOffsets" in treedata.keys()):
 
                 # Find the indices to split the array
-                split = np.add(np.array(
-                    treedata["DescOffsets"]), tree[snap]["Num_descen"], dtype=np.uint64, casting="unsafe")
+                if (ireducemem):
+                    tree[snap]["_Offsets"] = np.array(treedata["DescOffsets"],dtype=np.uint64)
+                else:
+                    descenoff=np.array(treedata["DescOffsets"],dtype=np.uint64)
+                    split = np.add(descenoff, tree[snap]["Num_descen"], dtype=np.uint64, casting="unsafe")[:-1]
+                    descenoff=None
 
                 # Read in the data splitting it up as reading it in
-                tree[snap]["Rank"] = np.split(np.array(treedata["Ranks"][:],dtype=np.uint16), split[:-1])
-                tree[snap]["Descen"] = np.split(
-                    treedata["Descendants"][:], split[:-1])
+                # if reducing memory then store all the values in the _ keys 
+                # and generate class that returns the appropriate subchunk as an array when using the [] operaotor
+                # otherwise generate lists of arrays
+                if (ireducemem):
+                    tree[snap]["_Ranks"] = np.array(treedata["Ranks"],dtype=np.int16)
+                    tree[snap]["_Descens"] = np.array(treedata["Descendants"],dtype=np.uint64)
+                    tree[snap]["Rank"] = MinStorageList(tree[snap]["Num_descen"],tree[snap]["_Offsets"],tree[snap]["_Ranks"])
+                    tree[snap]["Descen"] = MinStorageList(tree[snap]["Num_descen"],tree[snap]["_Offsets"],tree[snap]["_Descens"])
+                else:
+                    tree[snap]["Rank"] = np.split(np.array(treedata["Ranks"],dtype=np.uint16), split)
+                    tree[snap]["Descen"] = np.split(np.array(treedata["Descendants"],dtype=np.uint64), split)
 
                 if(inpart):
-                    tree[snap]["Npart_decen"] = np.split(
-                        np.array(treedata["DescenNpart"][:],np.int16), split[:-1])
+                    if (ireducemem):
+                        tree[snap]["_Npart_descens"] = np.array(treedata["DescenNpart"],np.float32)
+                        tree[snap]["Npart_descen"] = MinStorageList(tree[snap]["Num_descen"],tree[snap]["_Offsets"],tree[snap]["_Npart_descens"])
+                    else:
+                        tree[snap]["Npart_descen"] = np.split(np.array(treedata["DescenNpart"],np.int32), split)
                 if(imerit):
-                    tree[snap]["Merit"] = np.split(
-                        np.array(treedata["Merits"][:],np.float32), split[:-1])
+                    if (ireducemem):
+                        tree[snap]["_Merits"] = np.array(treedata["Merits"],np.float32)
+                        tree[snap]["Merit"] = MinStorageList(tree[snap]["Num_descen"],tree[snap]["_Offsets"],tree[snap]["_Merits"])
+                    else:
+                        tree[snap]["Merit"] = np.split(np.array(treedata["Merits"],np.float32), split)
                 #if reducing stuff down to best ranks, then only keep first descendant
                 #unless also reading merit and then keep first descendant and all other descendants that are above a merit limit
-                if (ireducedtobestranks): 
-                    halolist=np.where(tree[snap]["Num_descen"]>1)[0]
+                if (ireducedtobestranks==True and ireducemem==False): 
+                    halolist = np.where(tree[snap]["Num_descen"]>1)[0]
+                    if (iverbose):
+                        print('Reducing memory needed. At snap ', snap, ' with %d total halos and alter %d halos. '% (len(tree[snap]['Num_descen']), len(halolist)))
+                        print(np.percentile(tree[snap]['Num_descen'][halolist],[50.0,99.0]))
                     for ihalo in halolist:
                         numdescen = 1
                         if (imerit):
@@ -638,10 +700,8 @@ def ReadHaloMergerTreeDescendant(treefilename, ireverseorder=False, ibinary=0,
                             tree[snap]["Merit"][ihalo] = np.array([tree[snap]["Merit"][ihalo][:numdescen]])
                         if (inpart):
                             tree[snap]["Npart_descen"][ihalo] = np.array([tree[snap]["Npart_descen"][ihalo][:numdescen]])
+                split=None
             treedata.close()
-
-
-        snaptreelist.close()
 
     if (iverbose):
         print("done reading tree file ", time.clock()-start)
