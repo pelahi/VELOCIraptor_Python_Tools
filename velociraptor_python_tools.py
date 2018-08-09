@@ -588,7 +588,7 @@ def ReadHaloMergerTreeDescendant(treefilename, ireverseorder=False, ibinary=0,
                         if (inpart):
                             tree[ii]["Npart_descen"][j][k] = np.uint32(data[3])
 
-                if (ireducedtobestranks): 
+                if (ireducedtobestranks):
                     halolist=np.where(tree[snap]["Num_descen"]>1)[0]
                     for ihalo in halolist:
                         numdescen = 1
@@ -627,10 +627,10 @@ def ReadHaloMergerTreeDescendant(treefilename, ireverseorder=False, ibinary=0,
             if (imerit):
                 memsize += np.float32(0).nbytes
             memsize *= numhalos
-            if (ireducemem): 
+            if (ireducemem):
                 print("Reducing memory, changes api.")
                 print("Data contains ", numhalos, "halos and will likley minimum ", memsize/1024.**3.0, "GB of memory")
-            else: 
+            else:
                 print("Contains ", numhalos, "halos and will likley minimum ", memsize/1024.**3.0, "GB of memory")
                 print("Plus overhead to store list of arrays, with likely minimum of ",100*numhalos/1024**3.0, "GB of memory ")
             treedata.close()
@@ -658,7 +658,7 @@ def ReadHaloMergerTreeDescendant(treefilename, ireverseorder=False, ibinary=0,
                     descenoff=None
 
                 # Read in the data splitting it up as reading it in
-                # if reducing memory then store all the values in the _ keys 
+                # if reducing memory then store all the values in the _ keys
                 # and generate class that returns the appropriate subchunk as an array when using the [] operaotor
                 # otherwise generate lists of arrays
                 if (ireducemem):
@@ -684,7 +684,7 @@ def ReadHaloMergerTreeDescendant(treefilename, ireverseorder=False, ibinary=0,
                         tree[snap]["Merit"] = np.split(np.array(treedata["Merits"],np.float32), split)
                 #if reducing stuff down to best ranks, then only keep first descendant
                 #unless also reading merit and then keep first descendant and all other descendants that are above a merit limit
-                if (ireducedtobestranks==True and ireducemem==False): 
+                if (ireducedtobestranks==True and ireducemem==False):
                     halolist = np.where(tree[snap]["Num_descen"]>1)[0]
                     if (iverbose):
                         print('Reducing memory needed. At snap ', snap, ' with %d total halos and alter %d halos. '% (len(tree[snap]['Num_descen']), len(halolist)))
@@ -2033,7 +2033,7 @@ def GenerateSubhaloLinks(numsnaps, numhalos, halodata, TEMPORALHALOIDVAL=1000000
     print("Done subhalolinks ", time.clock()-start)
 
 
-def GenerateProgenitorLinks(numsnaps, numhalos, halodata, ireversesnaporder=False, 
+def GenerateProgenitorLinks(numsnaps, numhalos, halodata, ireversesnaporder=False,
                             nsnapsearch=4, TEMPORALHALOIDVAL=1000000000000, iverbose=0):
     """
     This code generates a quick way of moving across a halo's progenitor list storing a the next/previous progenitor
@@ -2050,7 +2050,7 @@ def GenerateProgenitorLinks(numsnaps, numhalos, halodata, ireversesnaporder=Fals
 
     for j in range(numsnaps):
         # store id and snap and mass of last major merger and while we're at it, store number of major mergers
-        halodata[j]["LeftTail"] = copy.deepcopy(halodata[j]["ID"]) 
+        halodata[j]["LeftTail"] = copy.deepcopy(halodata[j]["ID"])
         halodata[j]["RightTail"] = copy.deepcopy(halodata[j]["ID"])
         # alias the data
         halodata[j]["PreviousProgenitor"] = halodata[j]["LeftTail"]
@@ -2132,7 +2132,7 @@ def GenerateProgenitorLinks(numsnaps, numhalos, halodata, ireversesnaporder=Fals
 
 
 def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
-                   ireversesnaporder=False, TEMPORALHALOIDVAL=1000000000000, iverbose=1, 
+                   ireversesnaporder=False, TEMPORALHALOIDVAL=1000000000000, iverbose=1,
                    interactiontime=2, ispatialintflag=False, pos_tree=[], cosmo=dict()):
     """
     This code traces all root heads back in time identifying all interacting haloes and bundles them together into the same forest id
@@ -2596,7 +2596,7 @@ def WriteUnifiedTreeandHaloCatalog(fname, numsnaps, rawtreedata, numhalos, halod
 
     # overall halo finder and tree builder description
     findergrp = headergrp.create_group("HaloFinder")
-    findergrp.attrs["Name"] = descripdata["HaloFinder"] 
+    findergrp.attrs["Name"] = descripdata["HaloFinder"]
     findergrp.attrs["Version"] = descripdata["HaloFinder_version"]
     findergrp.attrs["Particle_num_threshold"] = descripdata["Particle_num_threshold"]
 
@@ -2967,7 +2967,7 @@ def WriteWalkableHDFTree(fname, numsnaps, tree, numhalos, halodata, atime,
     """
     hdffile = h5py.File(fname, 'w')
     headergrp = hdffile.create_group("Header")
-    # set the attributes of the header, store useful information regarding the tree 
+    # set the attributes of the header, store useful information regarding the tree
     headergrp.attrs["NSnaps"] = numsnaps
     # overall description
     headergrp.attrs["Title"] = descripdata["Title"]
@@ -3075,11 +3075,13 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
     SimulationInfo = copy.deepcopy(halodata[0]['SimulationInfo'])
     UnitInfo = copy.deepcopy(halodata[0]['UnitInfo'])
     period = SimulationInfo['Period']
+    converttocomove = ['Xc', 'Yc', 'Zc', 'Rmax', 'R_200crit']
     # convert positions and sizes to comoving if necesary
     if (UnitInfo['Comoving_or_Physical'] == 0 and SimulationInfo['Cosmological_Sim'] == 1):
-        converttocomove = ['Xc', 'Yc', 'Zc', 'Rmax', 'R_200crit']
+        keys=halodata[0].keys()
         for i in range(numsnaps):
             for key in converttocomove:
+                if key not in keys: continue
                 halodata[i][key] /= halodata[i]['SimulationInfo']['ScaleFactor']
         # extracted period from first snap so can use the scale factor stored in simulation info
         period /= SimulationInfo['ScaleFactor']
@@ -3321,8 +3323,10 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
     # convert back to physical coordinates if necessary
     if (UnitInfo['Comoving_or_Physical'] == 0 and SimulationInfo['Cosmological_Sim'] == 1):
         converttocomove = ['Xc', 'Yc', 'Zc', 'Rmax', 'R_200crit']
+        keys=halodata[0].keys()
         for i in range(numsnaps):
             for key in converttocomove:
+                if key not in keys: continue
                 halodata[i][key] *= halodata[i]['SimulationInfo']['ScaleFactor']
         # extracted period from first snap so can use the scale factor stored in simulation info
         period /= SimulationInfo['ScaleFactor']
