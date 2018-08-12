@@ -1761,17 +1761,18 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
         if (numactive == 0):
             continue
         haloidarray = halodata[istart]['Tail'][wdata]
+        #haloidarray = halodata[istart]['RootTail'][wdata]
         haloindexarray = np.array(haloidarray % TEMPORALHALOIDVAL -1, dtype=np.int64) 
         halosnaparray = np.array(np.floor(haloidarray / TEMPORALHALOIDVAL), dtype=np.int32)
         if (ireverseorder):
             halosnaparray = numsnaps - 1 - halosnaparray
         # go to root tails and walk the main branch 
         for i in range(numactive):
+            
+            halodata[halosnaparray[i]]['RootHead'][haloindexarray[i]]=halodata[istart]['RootHead'][wdata[i]]
+            halodata[halosnaparray[i]]['RootHeadSnap'][haloindexarray[i]]=halodata[istart]['RootHeadSnap'][wdata[i]]
             """
-            halodata[halosnap[i]]['RootHead'][haloindex[i]]=halodata[istart]['RootHead'][wdata[i]]
-            halodata[halosnap[i]]['RootHeadSnap'][haloindex[i]]=halodata[istart]['RootHeadSnap'][wdata[i]]
-            """
-            roothead = halodata[istart]['RootHead'][wdata[i]]
+            rootheadid = halodata[istart]['RootHead'][wdata[i]]
             rootheadsnap = halodata[istart]['RootHeadSnap'][wdata[i]]
             haloid = haloidarray[i]
             haloindex = haloindexarray[i]
@@ -1788,6 +1789,12 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
                 if (haloid == descen):
                     break
                 halosnap, haloindex, haloid = descensnap, descenindex, descen
+            """
+        wdata = None
+        haloidarray = None
+        haloindexarray = None
+        halosnaparray = None
+
     # now go back and find all secondary progenitors and set their root heads
     for istart in snaplist:
         if (numhalos[istart] == 0):
