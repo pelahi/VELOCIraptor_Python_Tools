@@ -1761,10 +1761,10 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
         if (numactive == 0):
             continue
         haloidarray = halodata[istart]['Tail'][wdata]
-        haloindexarray = np.array(haloid % TEMPORALHALOIDVAL -1, dtype=np.int64) 
-        halosnaparray = np.array(np.floor(haloid / TEMPORALHALOIDVAL), dtype=np.int32)
+        haloindexarray = np.array(haloidarray % TEMPORALHALOIDVAL -1, dtype=np.int64) 
+        halosnaparray = np.array(np.floor(haloidarray / TEMPORALHALOIDVAL), dtype=np.int32)
         if (ireverseorder):
-            halosnap = numsnaps - 1 - halosnap
+            halosnaparray = numsnaps - 1 - halosnaparray
         # go to root tails and walk the main branch 
         for i in range(numactive):
             """
