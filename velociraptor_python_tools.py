@@ -3,6 +3,7 @@ from __future__ import print_function
 
 import sys
 import os
+import struct
 import os.path
 import string
 import time
@@ -21,7 +22,7 @@ import scipy.interpolate as scipyinterp
 import scipy.spatial as spatial
 import multiprocessing as mp
 from collections import deque
-
+import pandas as pd
 #import cython
 #from cython.parallel import prange, parallel
 
@@ -134,7 +135,7 @@ def ReadPropertyFile(basefilename, ibinary=0, iseparatesubfiles=0, iverbose=0, d
         byteoffset = np.dtype(np.int32).itemsize*3 + \
             np.dtype(np.uint64).itemsize*2+4*headersize
         for i in range(headersize):
-            fieldnames.append(unpack('s', halofile.read(CHARSIZE)).strip())
+            fieldnames.append(struct.unpack('s', halofile.read(CHARSIZE)).strip())
         for i in np.arange(fieldnames.__len__()):
             fieldname = fieldnames[i]
             if fieldname in ["ID", "numSubStruct", "npart", "n_gas", "n_star", "Structuretype"]:
@@ -591,18 +592,18 @@ def ReadHaloMergerTreeDescendant(treefilename, ireverseorder=False, ibinary=0,
                             tree[ii]["Npart_descen"][j][k] = np.uint32(data[3])
 
                 if (ireducedtobestranks):
-                    halolist=np.where(tree[snap]["Num_descen"]>1)[0]
+                    halolist=np.where(tree[ii]["Num_descen"]>1)[0]
                     for ihalo in halolist:
                         numdescen = 1
                         if (imerit):
-                            numdescen = np.int32(np.max([1,np.argmax(tree[snap]["Merit"][ihalo]<meritlimit)]))
-                        tree[snap]["Num_descen"][ihalo] = numdescen
-                        tree[snap]["Descen"][ihalo] = np.array([tree[snap]["Descen"][ihalo][:numdescen]])
-                        tree[snap]["Rank"][ihalo] = np.array([tree[snap]["Rank"][ihalo][:numdescen]])
+                            numdescen = np.int32(np.max([1,np.argmax(tree[ii]["Merit"][ihalo]<meritlimit)]))
+                        tree[ii]["Num_descen"][ihalo] = numdescen
+                        tree[ii]["Descen"][ihalo] = np.array([tree[ii]["Descen"][ihalo][:numdescen]])
+                        tree[ii]["Rank"][ihalo] = np.array([tree[ii]["Rank"][ihalo][:numdescen]])
                         if (imerit):
-                            tree[snap]["Merit"][ihalo] = np.array([tree[snap]["Merit"][ihalo][:numdescen]])
+                            tree[ii]["Merit"][ihalo] = np.array([tree[ii]["Merit"][ihalo][:numdescen]])
                         if (inpart):
-                            tree[snap]["Npart_descen"][ihalo] = np.array([tree[snap]["Npart_descen"][ihalo][:numdescen]])
+                            tree[ii]["Npart_descen"][ihalo] = np.array([tree[ii]["Npart_descen"][ihalo][:numdescen]])
     # hdf format
     elif(ibinary == 2):
 
@@ -799,6 +800,8 @@ def ReadCrossCatalogList(fname, meritlim=0.1, iverbose=0):
     Reads a cross catalog produced by halomergertree,
     also allows trimming of cross catalog using a higher merit threshold than one used to produce catalog
     """
+    return []
+    """
     start = time.clock()
     if (iverbose):
         print("reading cross catalog")
@@ -825,6 +828,7 @@ def ReadCrossCatalogList(fname, meritlim=0.1, iverbose=0):
     if (iverbose):
         print("done reading cross catalog ", time.clock()-start)
     return pdata
+    """
 
 
 def ReadSimInfo(basefilename):
@@ -1157,7 +1161,7 @@ def ReadSOParticleDataFile(basefilename, ibinary=0, iverbose=0, binarydtype=np.i
             numparts = np.uint64(numSO)
             gfile.close()
             # load data
-            gdata = np.loadtxt(gfilename, skiprows=2, dtype=np.uint64)
+            gdata = np.loadtxt(filename, skiprows=2, dtype=np.uint64)
             numingroup = gdata[:numSO]
             offset = gdata[np.int64(numSO):np.int64(2*numSO)]
             piddata = gdata[np.int64(2*numSO):np.int64(2*numSO+numparts)]
@@ -1366,7 +1370,7 @@ def BuildTemporalHeadTail(numsnaps, tree, numhalos, halodata, TEMPORALHALOIDVAL=
         # if the number of halos is large then run in parallel
         if (numhalos[istart] > 2*chunksize and iparallel == 1):
             # determine maximum number of threads
-            nthreads = int(min(mp.cpu_count(), ceil(
+            nthreads = int(min(mp.cpu_count(), np.ceil(
                 numhalos[istart]/float(chunksize))))
             nchunks = int(
                 np.ceil(numhalos[istart]/float(chunksize)/float(nthreads)))
@@ -1380,7 +1384,7 @@ def BuildTemporalHeadTail(numsnaps, tree, numhalos, halodata, TEMPORALHALOIDVAL=
                 # if last chunk then must adjust nthreads
                 if (j == nchunks-1):
                     nthreads = int(
-                        ceil((numhalos[istart]-offset)/float(chunksize)))
+                        np.ceil((numhalos[istart]-offset)/float(chunksize)))
 
                 halochunk = [range(offset+k*chunksize, offset+(k+1)*chunksize)
                              for k in range(nthreads)]
@@ -1617,7 +1621,7 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
         # if the number of halos is large then run in parallel
         if (numhalos[istart] > 2*chunksize and iparallel == 1):
             # determine maximum number of threads
-            nthreads = int(min(mp.cpu_count(), ceil(
+            nthreads = int(min(mp.cpu_count(), np.ceil(
                 numhalos[istart]/float(chunksize))))
             nchunks = int(
                 np.ceil(numhalos[istart]/float(chunksize)/float(nthreads)))
@@ -1631,7 +1635,7 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
                 # if last chunk then must adjust nthreads
                 if (j == nchunks-1):
                     nthreads = int(
-                        ceil((numhalos[istart]-offset)/float(chunksize)))
+                        np.ceil((numhalos[istart]-offset)/float(chunksize)))
 
                 halochunk = [range(offset+k*chunksize, offset+(k+1)*chunksize)
                              for k in range(nthreads)]
@@ -1698,6 +1702,10 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
         halodata[istart]['Head'] = np.array(halodata[istart]['ID'],copy=True)
         halodata[istart]['HeadSnap'] = istart*np.ones(numhalos[istart])
         #find all halos that have descendants and set there heads
+        if (istart == numsnaps-1): 
+            halodata[istart]['RootHead'] = np.array(halodata[istart]['ID'],copy=True)
+            halodata[istart]['RootHeadSnap'] = istart*np.ones(numhalos[istart])
+            continue
         descencheck=tree[istart]['Num_descen']>0
         wdata=np.where(descencheck)[0]
         numwithdescen = wdata.size
@@ -1756,8 +1764,9 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
     for istart in snaplist:
         if (numhalos[istart] == 0):
             continue
-        wdata = np.where((halodata[istart]['RootHead'] != 0)*(halodata[istart]['Tail']!=halodata[istart]['ID']))[0]
+        wdata = np.where((halodata[istart]['RootHead'] != 0))[0]
         numactive=wdata.size
+        print(istart,numhalos[istart],numactive)
         if (numactive == 0):
             continue
         haloidarray = halodata[istart]['Tail'][wdata]
@@ -2810,10 +2819,10 @@ def WriteCombinedUnifiedTreeandHaloCatalog(fname, numsnaps, rawtree, numhalos, h
     """
 
     if (ibuildheadtail == 1):
-        BuildTemporalHeadTail(numsnaps, tree, numhalos, halodata)
+        BuildTemporalHeadTail(numsnaps, rawtree, numhalos, halodata)
     if (ibuildmajormergers == 1):
-        IdentifyMergers(numsnaps, tree, numhalos,
-                        halodata, boxsize, hval, atime)
+        IdentifyMergers(numsnaps, rawtree, numhalos,
+                        halodata, cosmodata['BoxSize'], cosmodata['Hubble_param'], atime)
     hdffile = h5py.File(fname+".snap.hdf.data", 'w')
     headergrp = hdffile.create_group("Header")
     # store useful information such as number of snapshots, halos,
@@ -3182,7 +3191,7 @@ def FixTruncationBranchSwapsInTreeDescendantAndWrite(rawtreefname, reducedtreena
     # and also extract the description used to make the tree
     numsnaps = len(rawtreedata)
     if (ibuildtree):
-        halo = [dict() for i in range(numsnaps)]
+        halodata = [dict() for i in range(numsnaps)]
         numhalos = np.zeros(numsnaps, dtype=np.uint64)
         BuildTemporalHeadTailDescendant(
             numsnaps, rawtreedata, numhalos, halodata, TEMPORALHALOIDVAL)
@@ -3192,12 +3201,14 @@ def FixTruncationBranchSwapsInTreeDescendantAndWrite(rawtreefname, reducedtreena
     proplist = ['npart', 'hostHaloID', 'Structuretype', 'ID', 'Xc',
                 'Yc', 'Zc', 'VXc', 'VYc', 'VZc', 'Rmax', 'Vmax', 'R_200crit']
     numhalos = np.zeros(numsnaps, dtype=np.uint64)
+    atime = np.zeros(numsnaps)
     snaplist = open(snapproplistfname, 'r')
     for i in range(numsnaps):
         snapfile = snaplist.readline().strip()
         halotemp, numhalos[i] = ReadPropertyFile(
             snapfile, inputpropformat, inputpropsplitformat, 0, proplist)
         halodata[i].update(halotemp)
+        atime[i]=halodata[i]['SimulationInfo']['ScaleFactor']
     halodata = FixTruncationBranchSwapsInTreeDescendant(numsnaps, rawtreedata, halodata, numhalos,
                                                         npartlim, meritlim, xdifflim, vdifflim, nsnapsearch,
                                                         TEMPORALHALOIDVAL)
