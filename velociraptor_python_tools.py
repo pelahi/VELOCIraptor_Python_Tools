@@ -470,6 +470,8 @@ class MinStorageList():
             return np.array([])
         else :
             return self.Data[self.Offset[index]:self.Offset[index]+self.Num[index]]
+    def GetBestRanks(self, ):
+        return np.array(self.Data[self.Offset],copy=True)
 
 
 def ReadHaloMergerTreeDescendant(treefilename, ireverseorder=False, ibinary=0,
@@ -1590,12 +1592,13 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
     iparallel = -1
 
     totstart = time.clock()
+    start0=time.clock()
 
+    """
     if (ireverseorder):
         snaplist = range(numsnaps-1, -1, -1)
     else:
         snaplist = range(numsnaps)
-
     if (iparallel == 1):
         # need to copy halodata as this will be altered
         if (iverbose > 0):
@@ -1673,45 +1676,148 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
                         print(
                             "done", j/float(numhalos[istart]), "in", time.clock()-start)
                     start = time.clock()
+    """
+    
+    if (ireverseorder):
+        snaplist = range(numsnaps-1, -1, -1)
+    else:
+        snaplist = range(numsnaps)
+    for istart in snaplist:
+        start2=time.clock()
+        if (iverbose > 0):
+            print('starting head/tail at snapshot ', istart, ' containing ', numhalos[istart], 'halos')
+        if (numhalos[istart] == 0): continue
+        #set tails and root tails if necessary
+        wdata=np.where(halodata[istart]['Tail'] == 0)
+        if (len(wdata[0])>0):
+            halodata[istart]['Tail'][wdata] = np.array(halodata[istart]['ID'][wdata],copy=True)
+            halodata[istart]['RootTail'][wdata] = np.array(halodata[istart]['ID'][wdata],copy=True)
+            halodata[istart]['TailSnap'][wdata] = istart
+            halodata[istart]['RootTailSnap'][wdata] = istart
+        #init heads to ids
+        halodata[istart]['Head'] = np.array(halodata[istart]['ID'],copy=True)
+        halodata[istart]['HeadSnap'] = istart*np.ones(numhalos[istart])
+        #find all halos that have descendants and set there heads
+        descencheck=tree[istart]['Num_descen']>0
+        wdata=np.where(descencheck)[0]
+        numwithdescen = wdata.size
+        if (numwithdescen>0):
+            # should figure out how to best speed this up
+            ranks = np.array([tree[istart]['Rank'][index][0] for index in wdata])
+            descenids = np.array([tree[istart]['Descen'][index][0] for index in wdata])
+            # rest is quick
+            descensnaps = np.array(descenids/TEMPORALHALOIDVAL, dtype=np.int32)
+            if (ireverseorder):
+                descensnaps = numsnaps - 1 - descensnaps
+            descenindex = np.array(descenids % TEMPORALHALOIDVAL - 1, dtype=np.int64)
+            halodata[istart]['HeadRank'][wdata] = np.array(ranks,copy=True)
+            halodata[istart]['Head'][wdata] = np.array(descenids,copy=True)
+            halodata[istart]['HeadSnap'][wdata] = np.array(descensnaps,copy=True)
+            # showld figure out how to speed this up
+            for i in range(numwithdescen):
+                isnap, idescenindex = descensnaps[i], descenindex[i]
+                halodata[isnap]['Num_progen'][idescenindex] += 1
+            # set the tails of all these objects and their root tails as well
+            wdata2 = np.where(ranks == 0)[0]
+            numactive = wdata2.size
+            if (numactive>0):
+                activetails=wdata[wdata2]
+                descensnaps=descensnaps[wdata2]
+                descenindex=descenindex[wdata2]
+                # should parallelise this
+                for i in range(numactive):
+                    index, isnap, idescenindex = activetails[i], descensnaps[i], descenindex[i]
+                    halodata[isnap]['Tail'][idescenindex] = halodata[istart]['ID'][index]
+                    halodata[isnap]['RootTail'][idescenindex] = halodata[istart]['RootTail'][index]
+                    halodata[isnap]['TailSnap'][idescenindex] = istart
+                    halodata[isnap]['RootTailSnap'][idescenindex] = halodata[istart]['RootTailSnap'][index]
+                wdata2 = None
+            descenids = None
+            descensnaps = None
+            descenindex = None
+        #set root heads of things that have no descendants
+        wdata = np.where(descencheck == False)[0]
+        if (wdata.size > 0):
+            halodata[istart]['RootHead'][wdata] = np.array(halodata[istart]['ID'][wdata])
+            halodata[istart]['RootHeadSnap'][wdata] = istart
+        wdata = None
+        if (iverbose > 0):
+            print('finished in', time.clock()-start2)
     if (iverbose > 0):
-        print("done with first bit, setting the main branches walking forward in time")
+        print("done with first bit, setting the main branches walking backward",time.clock()-start0)
+
     # now have walked all the main branches and set the root tail, head and tail values
     # in case halo data is with late times at beginning need to process items in reverse
     if (ireverseorder):
         snaplist = range(numsnaps)
     else:
         snaplist = range(numsnaps-1, -1, -1)
-
+    # first set root heads of main branches
     for istart in snaplist:
+        if (numhalos[istart] == 0):
+            continue
+        wdata = np.where((halodata[istart]['RootHead'] != 0)*(halodata[istart]['Tail']!=halodata[istart]['ID']))[0]
+        numactive=wdata.size
+        if (numactive == 0):
+            continue
+        haloidarray = halodata[istart]['Tail'][wdata]
+        haloindexarray = np.array(haloid % TEMPORALHALOIDVAL -1, dtype=np.int64) 
+        halosnaparray = np.array(np.floor(haloid / TEMPORALHALOIDVAL), dtype=np.int32)
+        if (ireverseorder):
+            halosnap = numsnaps - 1 - halosnap
+        # go to root tails and walk the main branch 
+        for i in range(numactive):
+            """
+            halodata[halosnap[i]]['RootHead'][haloindex[i]]=halodata[istart]['RootHead'][wdata[i]]
+            halodata[halosnap[i]]['RootHeadSnap'][haloindex[i]]=halodata[istart]['RootHeadSnap'][wdata[i]]
+            """
+            roothead = halodata[istart]['RootHead'][wdata[i]]
+            rootheadsnap = halodata[istart]['RootHeadSnap'][wdata[i]]
+            haloid = haloidarray[i]
+            haloindex = haloindexarray[i]
+            halosnap = halosnaparray[i]
+            # set the root head of the main branch
+            while(True):
+                halodata[halosnap]['RootHead'][haloindex] = rootheadid
+                halodata[halosnap]['RootHeadSnap'][haloindex] = rootheadsnap
+                descen = halodata[halosnap]['Head'][haloindex]
+                descenindex = np.int64(descen % TEMPORALHALOIDVAL - 1)
+                descensnap = np.int32(np.floor(descen / TEMPORALHALOIDVAL))
+                if (ireverseorder):
+                    descensnap = numsnaps-1-descensnap
+                if (haloid == descen):
+                    break
+                halosnap, haloindex, haloid = descensnap, descenindex, descen
+    # now go back and find all secondary progenitors and set their root heads
+    for istart in snaplist:
+        if (numhalos[istart] == 0):
+            continue
         # identify all haloes which are not primary progenitors of their descendants, having a descendant rank >0
-        wdata = np.where(halodata[istart]['HeadRank'] > 0)
+        wdata = np.where(halodata[istart]['HeadRank'] > 0)[0]
+        numactive = wdata.size
+        if (numactive == 0):
+            continue
         # sort this list based on descendant ranking
         sortedranking = np.argsort(halodata[istart]['HeadRank'][wdata])
-        nrankedhalos = len(wdata[0])
-        rankedhalos = halodata[istart]['ID'][wdata[0][sortedranking]]
+        rankedhalos = halodata[istart]['ID'][wdata[sortedranking]]
+        rankedhaloindex = np.array(rankedhalos % TEMPORALHALOIDVAL - 1, dtype=np.int64)
+        wdata = None
+        maindescen = np.array([tree[istart]['Descen'][index][0] for index in rankedhaloindex], dtype=np.int64)
+        maindescenindex = np.int64(maindescen % TEMPORALHALOIDVAL-1)
+        maindescensnap = np.int32(maindescen / TEMPORALHALOIDVAL)
+        if (ireverseorder):
+            maindescensnap = numsnaps-1 - maindescensnap
         # for each of these haloes, set the head and use the root head information and root snap and set all the information
         # long its branch
-        for ihalo in rankedhalos:
-            haloid = ihalo
-            haloindex = int(haloid % TEMPORALHALOIDVAL)-1
-            halosnap = istart
-            # now set the head of these objects
-            maindescen = tree[halosnap]['Descen'][haloindex][0]
-            maindescenindex = int(maindescen % TEMPORALHALOIDVAL)-1
-            if (ireverseorder):
-                maindescensnap = numsnaps-1 - \
-                    int((maindescen-maindescen %
-                         TEMPORALHALOIDVAL)/TEMPORALHALOIDVAL)
-            else:
-                maindescensnap = int(
-                    (maindescen-maindescen % TEMPORALHALOIDVAL)/TEMPORALHALOIDVAL)
-            # increase the number of progenitors of this descendant
-            halodata[halosnap]['Head'][haloindex] = maindescen
-            halodata[halosnap]['HeadSnap'][haloindex] = maindescensnap
-            halodata[maindescensnap]['Num_progen'][maindescenindex] += 1
+        for i in range(numactive):
             # store the root head
-            roothead = halodata[maindescensnap]['RootHead'][maindescenindex]
-            rootsnap = halodata[maindescensnap]['RootHeadSnap'][maindescenindex]
+            # now set the head of these objects
+            halosnap = istart
+            haloid = rankedhalos[i]
+            haloindex = rankedhaloindex[i]
+            # increase the number of progenitors of this descendant
+            roothead = halodata[maindescensnap[i]]['RootHead'][maindescenindex[i]]
+            rootsnap = halodata[maindescensnap[i]]['RootHeadSnap'][maindescenindex[i]]
             # now set the root head for all the progenitors of this object
             while (True):
                 halodata[halosnap]['RootHead'][haloindex] = roothead
@@ -1720,7 +1826,39 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
                     break
                 haloid = halodata[halosnap]['Tail'][haloindex]
                 halosnap = halodata[halosnap]['TailSnap'][haloindex]
-                haloindex = int(haloid % TEMPORALHALOIDVAL)-1
+                haloindex = np.int64(haloid % TEMPORALHALOIDVAL - 1)
+        rankedhalos = None
+        rankedhaloindex = None
+        maindescen = None
+        maindescenindex = None 
+        maindescensnaporder = None 
+
+    """
+
+    if (ireverseorder):
+        snaplist = range(1,numsnaps)
+    else:
+        snaplist = range(numsnaps-2, -1, -1)
+    # then root heads of all secondary branches
+    for istart in snaplist:
+        wdata = np.where(halodata[istart]['HeadRank'] > 0)[0]
+        #wdata = np.where(halodata[istart]['RootHead'] == 0)[0]
+        numactive=wdata.size
+        print(istart,numhalos[istart],numactive)
+        if (numactive == 0):
+            continue
+        #get the heads of all of these objects
+        descens = halodata[istart]['Head'][wdata]
+        descenindex = np.array(descens % TEMPORALHALOIDVAL - 1, dtype=np.int64)
+        descensnaps = np.array(np.floor(descens / TEMPORALHALOIDVAL), dtype=np.int32)
+        if (ireverseorder):
+            descensnaps = numsnaps - 1 - descensnaps
+        for i in range(numactive):
+            isnap, idescen = descensnaps[i], descenindex[i]
+            roothead, rootheadsnap = halodata[isnap]['RootHead'][idescen], halodata[isnap]['RootHeadSnap'][idescen]
+            halodata[istart]['RootHead'][wdata[i]] = roothead
+            halodata[istart]['RootHeadSnap'][wdata[i]] = rootheadsnap
+    """
     print("Done building", time.clock()-totstart)
 
 
@@ -3063,7 +3201,7 @@ def FixTruncationBranchSwapsInTreeDescendantAndWrite(rawtreefname, reducedtreena
 
 def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numhalos,
                                              npartlim=200, meritlim=0.025, xdifflim=2.0, vdifflim=1.0, nsnapsearch=4,
-                                             TEMPORALHALOIDVAL=1000000000000, iverbose=0):
+                                             TEMPORALHALOIDVAL=1000000000000, iverbose=1):
     """
     Updates the walkable tree information stored with the halo data
     by using the raw tree produced by TreeFrog to correct any branch swap events leading to truncation
@@ -3071,34 +3209,38 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
     raw tre information with merits and secondary rank descendants.
     """
     start = time.clock()
+    start0 = time.clock()
     print('Starting to fix branches')
     SimulationInfo = copy.deepcopy(halodata[0]['SimulationInfo'])
     UnitInfo = copy.deepcopy(halodata[0]['UnitInfo'])
     period = SimulationInfo['Period']
     converttocomove = ['Xc', 'Yc', 'Zc', 'Rmax', 'R_200crit']
+    keys = halodata[0].keys()
+    for key in converttocomove:
+        if key not in keys: 
+            converttocomove.remove(key)
     # convert positions and sizes to comoving if necesary
     if (UnitInfo['Comoving_or_Physical'] == 0 and SimulationInfo['Cosmological_Sim'] == 1):
-        keys=halodata[0].keys()
+        print('Converting to comoving')
         for i in range(numsnaps):
             for key in converttocomove:
-                if key not in keys: continue
                 halodata[i][key] /= halodata[i]['SimulationInfo']['ScaleFactor']
         # extracted period from first snap so can use the scale factor stored in simulation info
         period /= SimulationInfo['ScaleFactor']
-    atime = np.zeros(numsnaps)
-    numhalos = np.zeros(numsnaps, dtype=np.int64)
-    for i in range(numsnaps):
-        atime[i] = halodata[i]['SimulationInfo']['ScaleFactor']
-        numhalos[i] = len(halodata[i]['Xc'])
-
+    print(time.clock()-start0)
     for i in range(numsnaps-1):
+        start1=time.clock()
         # find halos with no progenitors that are large enough and continue to exist for several snapshots
         if(numhalos[i] == 0):
             continue
         noprog = np.where((halodata[i]['Tail'] == halodata[i]['ID'])*(
             halodata[i]['npart'] >= npartlim)*(halodata[i]['Head'] != halodata[i]['ID']))
         if (len(noprog[0]) == 0):
+            if (iverbose):
+                print('finshed snap, no missing progens ',i,time.clock()-start1)
             continue
+        if (iverbose):
+            print('snap',i,' number with missing progens ',len(noprog[0]))
         # have object with no progenitor
         for inoprog in noprog[0]:
             # have object with no progenitor
@@ -3116,7 +3258,7 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
             if (haloHost == -1):
                 haloHost = halodata[haloSnap]['ID'][haloIndex]
 
-            if (iverbose):
+            if (iverbose>1):
                 print('halo with no progenitor', haloID, halodata[i]['npart'][inoprog], halodata[i]['Structuretype'][inoprog],
                       haloHost, halodata[i]['Head'][inoprog],
                       halodata[np.uint32(halodata[i]['Head'][inoprog]/TEMPORALHALOIDVAL)]['Tail'][np.uint64(halodata[i]['Head'][inoprog] % TEMPORALHALOIDVAL-1)])
@@ -3154,7 +3296,7 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
             mergeIndex = np.uint64(mergeHalo % TEMPORALHALOIDVAL-1)
             if (treedata[mergeSnap]['Rank'][mergeIndex][0] != 0):
                 continue
-            if (iverbose):
+            if (iverbose>1):
                 print(haloID, 'may have found merge halo', mergeHalo,
                       treedata[mergeSnap]['Descen'][mergeIndex], treedata[mergeSnap]['Merit'][mergeIndex], treedata[mergeSnap]['Rank'][mergeIndex])
 
@@ -3241,7 +3383,7 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
             branchfixHead = halodata[branchfixSnap]['Head'][branchfixIndex]
             branchfixHeadSnap = np.uint64(branchfixHead/TEMPORALHALOIDVAL)
             branchfixHeadIndex = np.uint64(branchfixHead % TEMPORALHALOIDVAL-1)
-            if (iverbose):
+            if (iverbose>1):
                 print('halo branch swap occurs at ', haloID, 'now should have progenitor', mergeHalo,
                       'with ', branchfixHalo, ' taking over ', postmergeHalo, minxdiff, minvdiff)
             # now adjust these points, mergeHalo must have its Head changed,
@@ -3253,11 +3395,11 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
             newroottailSnap = halodata[mergeSnap]['RootTailSnap'][mergeIndex]
             newroottailbranchfixSnap = halodata[branchfixSnap]['RootTailSnap'][branchfixIndex]
             oldroottail = halodata[postmergeSnap]['RootTail'][postmergeIndex]
-            if (iverbose):
+            if (iverbose>1):
                 print('new tails will be ', newroottail, newroottailbranchfix)
 
             # adjust head tails of object with no progenitor
-            if (iverbose):
+            if (iverbose>1):
                 print('before fix merge', mergeHalo, halodata[mergeSnap]['Head']
                       [mergeIndex], 'no prog', haloID, halodata[haloSnap]['Tail'][haloIndex])
             halodata[mergeSnap]['Head'][mergeIndex] = haloID
@@ -3266,7 +3408,7 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
             halodata[haloSnap]['TailSnap'][haloIndex] = mergeSnap
 
             # adjust head tails of branch swap line
-            if (iverbose):
+            if (iverbose>1):
                 print('before fix branch fix', branchfixHalo, halodata[branchfixSnap]['Head'][branchfixIndex],
                       ' post merge', postmergeHalo, halodata[postmergeSnap]['Tail'][postmergeIndex])
             halodata[branchfixSnap]['Head'][branchfixIndex] = postmergeHalo
@@ -3284,7 +3426,7 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
             curIndex = np.uint64(curHalo % TEMPORALHALOIDVAL-1)
             # while (halodata[curSnap]['RootTail'][curIndex] ==  haloID):
             while (True):
-                if (iverbose):
+                if (iverbose>1):
                     print('moving up branch to adjust the root tails', curHalo,
                           curSnap, halodata[curSnap]['RootTail'][curIndex], newroottail)
                 halodata[curSnap]['RootTail'][curIndex] = newroottail
@@ -3305,7 +3447,7 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
             # and halodata[curSnap]['Head'][curIndex]!= curHalo
             # while (halodata[curSnap]['RootTail'][curIndex] ==  oldroottail):
             while (True):
-                if (iverbose):
+                if (iverbose>1):
                     print('moving up fix branch to adjust the root tails', curHalo, curSnap,
                           halodata[curSnap]['RootTail'][curIndex], newroottailbranchfix)
                 halodata[curSnap]['RootTail'][curIndex] = newroottailbranchfix
@@ -3319,6 +3461,8 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
                 curHalo = halodata[curSnap]['Head'][curIndex]
                 curSnap = np.uint64(curHalo/TEMPORALHALOIDVAL)
                 curIndex = np.uint64(curHalo % TEMPORALHALOIDVAL-1)
+        if (iverbose):
+            print('finshed snap ',i,time.clock()-start1)
     print('Done fixing branches', time.clock()-start)
     # convert back to physical coordinates if necessary
     if (UnitInfo['Comoving_or_Physical'] == 0 and SimulationInfo['Cosmological_Sim'] == 1):
