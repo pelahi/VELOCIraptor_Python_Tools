@@ -1598,90 +1598,6 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
     totstart = time.clock()
     start0=time.clock()
 
-    """
-    if (ireverseorder):
-        snaplist = range(numsnaps-1, -1, -1)
-    else:
-        snaplist = range(numsnaps)
-    if (iparallel == 1):
-        # need to copy halodata as this will be altered
-        if (iverbose > 0):
-            print("copying halo")
-        start = time.clock()
-        mphalodata = manager.list([manager.dict(halodata[k])
-                                   for k in range(numsnaps)])
-        if (iverbose > 0):
-            print("done", time.clock()-start)
-
-    for istart in snaplist:
-        if (iverbose > 0):
-            print("Starting from halos at ", istart, "with", numhalos[istart])
-        if (numhalos[istart] == 0):
-            continue
-        # if the number of halos is large then run in parallel
-        if (numhalos[istart] > 2*chunksize and iparallel == 1):
-            # determine maximum number of threads
-            nthreads = int(min(mp.cpu_count(), np.ceil(
-                numhalos[istart]/float(chunksize))))
-            nchunks = int(
-                np.ceil(numhalos[istart]/float(chunksize)/float(nthreads)))
-            if (iverbose > 0):
-                print("Using", nthreads, "threads to parse ",
-                      numhalos[istart], " halos in ", nchunks, "chunks, each of size", chunksize)
-            # now for each chunk run a set of proceses
-            for j in range(nchunks):
-                start = time.clock()
-                offset = j*nthreads*chunksize
-                # if last chunk then must adjust nthreads
-                if (j == nchunks-1):
-                    nthreads = int(
-                        np.ceil((numhalos[istart]-offset)/float(chunksize)))
-
-                halochunk = [range(offset+k*chunksize, offset+(k+1)*chunksize)
-                             for k in range(nthreads)]
-                # adjust last chunk
-                if (j == nchunks-1):
-                    halochunk[-1] = range(offset+(nthreads-1)
-                                          * chunksize, numhalos[istart])
-                # when calling a process pass not just a work queue but the pointers to where data should be stored
-                processes = [mp.Process(target=TraceMainDescendantParallelChunk, args=(
-                    istart, halochunk[k], numsnaps, numhalos, mphalodata, tree, TEMPORALHALOIDVAL, ireverseorder)) for k in range(nthreads)]
-                count = 0
-                for p in processes:
-                    print(count+offset, k,
-                          min(halochunk[count]), max(halochunk[count]))
-                    p.start()
-                    count += 1
-                for p in processes:
-                    # join thread and see if still active
-                    p.join()
-                if (iverbose > 1):
-                    print((offset+j*nthreads*chunksize) /
-                          float(numhalos[istart]), " done in", time.clock()-start)
-        # otherwise just single
-        else:
-            # if first time entering non parallel section copy data back from parallel manager based structure to original data structure
-            # as parallel structures have been updated
-            if (iparallel == 1):
-                #tree = [dict(mptree[k]) for k in range(numsnaps)]
-                halodata = [dict(mphalodata[k]) for k in range(numsnaps)]
-                # set the iparallel flag to 0 so that all subsequent snapshots (which should have fewer objects) not run in parallel
-                # this is principly to minimize the amount of copying between manager based parallel structures and the halo/tree catalogs
-                iparallel = 0
-            start = time.clock()
-            chunksize = max(int(0.10*numhalos[istart]), 10)
-            for j in range(numhalos[istart]):
-                # start at this snapshot
-                #start = time.clock()
-                TraceMainDescendant(istart, j, numsnaps, numhalos,
-                                    halodata, tree, TEMPORALHALOIDVAL, ireverseorder)
-                if (j % chunksize == 0 and j > 0):
-                    if (iverbose > 1):
-                        print(
-                            "done", j/float(numhalos[istart]), "in", time.clock()-start)
-                    start = time.clock()
-    """
-    
     if (ireverseorder):
         snaplist = range(numsnaps-1, -1, -1)
     else:
@@ -1714,8 +1630,8 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
         print('have descen ',numwithdescen)
         if (numwithdescen>0):
             # should figure out how to best speed this up
-            ranks = np.array([tree[istart]['Rank'][index][0] for index in wdata])
-            descenids = np.array([tree[istart]['Descen'][index][0] for index in wdata])
+            ranks = np.array([tree[istart]['Rank'][index][0] for index in wdata], dtype=np.int32)
+            descenids = np.array([tree[istart]['Descen'][index][0] for index in wdata], dtype=np.int64)
             # rest is quick
             descensnaps = np.array(descenids/TEMPORALHALOIDVAL, dtype=np.int32)
             if (ireverseorder):
@@ -1782,28 +1698,8 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
             halosnaparray = numsnaps - 1 - halosnaparray
         # go to root tails and walk the main branch 
         for i in range(numactive):
-            
             halodata[halosnaparray[i]]['RootHead'][haloindexarray[i]]=halodata[istart]['RootHead'][wdata[i]]
             halodata[halosnaparray[i]]['RootHeadSnap'][haloindexarray[i]]=halodata[istart]['RootHeadSnap'][wdata[i]]
-            """
-            rootheadid = halodata[istart]['RootHead'][wdata[i]]
-            rootheadsnap = halodata[istart]['RootHeadSnap'][wdata[i]]
-            haloid = haloidarray[i]
-            haloindex = haloindexarray[i]
-            halosnap = halosnaparray[i]
-            # set the root head of the main branch
-            while(True):
-                halodata[halosnap]['RootHead'][haloindex] = rootheadid
-                halodata[halosnap]['RootHeadSnap'][haloindex] = rootheadsnap
-                descen = halodata[halosnap]['Head'][haloindex]
-                descenindex = np.int64(descen % TEMPORALHALOIDVAL - 1)
-                descensnap = np.int32(np.floor(descen / TEMPORALHALOIDVAL))
-                if (ireverseorder):
-                    descensnap = numsnaps-1-descensnap
-                if (haloid == descen):
-                    break
-                halosnap, haloindex, haloid = descensnap, descenindex, descen
-            """
         wdata = None
         haloidarray = None
         haloindexarray = None
@@ -1856,32 +1752,6 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
         maindescenindex = None 
         maindescensnaporder = None 
 
-    """
-
-    if (ireverseorder):
-        snaplist = range(1,numsnaps)
-    else:
-        snaplist = range(numsnaps-2, -1, -1)
-    # then root heads of all secondary branches
-    for istart in snaplist:
-        wdata = np.where(halodata[istart]['HeadRank'] > 0)[0]
-        #wdata = np.where(halodata[istart]['RootHead'] == 0)[0]
-        numactive=wdata.size
-        print(istart,numhalos[istart],numactive)
-        if (numactive == 0):
-            continue
-        #get the heads of all of these objects
-        descens = halodata[istart]['Head'][wdata]
-        descenindex = np.array(descens % TEMPORALHALOIDVAL - 1, dtype=np.int64)
-        descensnaps = np.array(np.floor(descens / TEMPORALHALOIDVAL), dtype=np.int32)
-        if (ireverseorder):
-            descensnaps = numsnaps - 1 - descensnaps
-        for i in range(numactive):
-            isnap, idescen = descensnaps[i], descenindex[i]
-            roothead, rootheadsnap = halodata[isnap]['RootHead'][idescen], halodata[isnap]['RootHeadSnap'][idescen]
-            halodata[istart]['RootHead'][wdata[i]] = roothead
-            halodata[istart]['RootHeadSnap'][wdata[i]] = rootheadsnap
-    """
     print("Done building", time.clock()-totstart)
 
 
