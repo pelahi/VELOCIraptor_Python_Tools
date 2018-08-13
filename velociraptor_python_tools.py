@@ -1692,23 +1692,26 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
             print('starting head/tail at snapshot ', istart, ' containing ', numhalos[istart], 'halos')
         if (numhalos[istart] == 0): continue
         #set tails and root tails if necessary
-        wdata=np.where(halodata[istart]['Tail'] == 0)
-        if (len(wdata[0])>0):
+        wdata = np.where(halodata[istart]['Tail'] == 0)[0]
+        print('are tails ',wdata.size)
+        if (wdata.size>0):
             halodata[istart]['Tail'][wdata] = np.array(halodata[istart]['ID'][wdata],copy=True)
             halodata[istart]['RootTail'][wdata] = np.array(halodata[istart]['ID'][wdata],copy=True)
-            halodata[istart]['TailSnap'][wdata] = istart
-            halodata[istart]['RootTailSnap'][wdata] = istart
+            halodata[istart]['TailSnap'][wdata] = istart*np.ones(wdata.size, dtype=np.int32)
+            halodata[istart]['RootTailSnap'][wdata] = istart*np.ones(wdata.size, dtype=np.int32)
         #init heads to ids
         halodata[istart]['Head'] = np.array(halodata[istart]['ID'],copy=True)
         halodata[istart]['HeadSnap'] = istart*np.ones(numhalos[istart])
         #find all halos that have descendants and set there heads
         if (istart == numsnaps-1): 
             halodata[istart]['RootHead'] = np.array(halodata[istart]['ID'],copy=True)
-            halodata[istart]['RootHeadSnap'] = istart*np.ones(numhalos[istart])
+            halodata[istart]['RootHeadSnap'] = istart*np.ones(numhalos[istart], dtype=np.int32)
             continue
-        descencheck=tree[istart]['Num_descen']>0
+        wdata = None
+        descencheck=(tree[istart]['Num_descen']>0)
         wdata=np.where(descencheck)[0]
         numwithdescen = wdata.size
+        print('have descen ',numwithdescen)
         if (numwithdescen>0):
             # should figure out how to best speed this up
             ranks = np.array([tree[istart]['Rank'][index][0] for index in wdata])
@@ -1718,9 +1721,9 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
             if (ireverseorder):
                 descensnaps = numsnaps - 1 - descensnaps
             descenindex = np.array(descenids % TEMPORALHALOIDVAL - 1, dtype=np.int64)
-            halodata[istart]['HeadRank'][wdata] = np.array(ranks,copy=True)
-            halodata[istart]['Head'][wdata] = np.array(descenids,copy=True)
-            halodata[istart]['HeadSnap'][wdata] = np.array(descensnaps,copy=True)
+            halodata[istart]['HeadRank'][wdata] = np.array(ranks, copy=True)
+            halodata[istart]['Head'][wdata] = np.array(descenids, copy=True)
+            halodata[istart]['HeadSnap'][wdata] = np.array(descensnaps, copy=True)
             # showld figure out how to speed this up
             for i in range(numwithdescen):
                 isnap, idescenindex = descensnaps[i], descenindex[i]
@@ -1739,16 +1742,17 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
                     halodata[isnap]['RootTail'][idescenindex] = halodata[istart]['RootTail'][index]
                     halodata[isnap]['TailSnap'][idescenindex] = istart
                     halodata[isnap]['RootTailSnap'][idescenindex] = halodata[istart]['RootTailSnap'][index]
-                wdata2 = None
+            wdata2 = None
             descenids = None
             descensnaps = None
             descenindex = None
         #set root heads of things that have no descendants
         wdata = np.where(descencheck == False)[0]
         if (wdata.size > 0):
-            halodata[istart]['RootHead'][wdata] = np.array(halodata[istart]['ID'][wdata])
-            halodata[istart]['RootHeadSnap'][wdata] = istart
+            halodata[istart]['RootHead'][wdata] = np.array(halodata[istart]['ID'][wdata], copy=True)
+            halodata[istart]['RootHeadSnap'][wdata] = istart*np.ones(wdata.size, dtype=np.int32)
         wdata = None
+        descencheck = None
         if (iverbose > 0):
             print('finished in', time.clock()-start2)
     if (iverbose > 0):
@@ -1766,7 +1770,8 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
             continue
         wdata = np.where((halodata[istart]['RootHead'] != 0))[0]
         numactive=wdata.size
-        print(istart,numhalos[istart],numactive)
+        if (iverbose > 0):
+            print('Setting root heads at ', istart, 'halos', numhalos[istart], 'active', numactive)
         if (numactive == 0):
             continue
         haloidarray = halodata[istart]['Tail'][wdata]
@@ -1811,6 +1816,8 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
         # identify all haloes which are not primary progenitors of their descendants, having a descendant rank >0
         wdata = np.where(halodata[istart]['HeadRank'] > 0)[0]
         numactive = wdata.size
+        if (iverbose > 0):
+            print('Setting sub branch root heads at ', istart, 'halos', numhalos[istart], 'active', numactive)
         if (numactive == 0):
             continue
         # sort this list based on descendant ranking
@@ -1819,10 +1826,10 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
         rankedhaloindex = np.array(rankedhalos % TEMPORALHALOIDVAL - 1, dtype=np.int64)
         wdata = None
         maindescen = np.array([tree[istart]['Descen'][index][0] for index in rankedhaloindex], dtype=np.int64)
-        maindescenindex = np.int64(maindescen % TEMPORALHALOIDVAL-1)
-        maindescensnap = np.int32(maindescen / TEMPORALHALOIDVAL)
+        maindescenindex = np.array(maindescen % TEMPORALHALOIDVAL - 1, dtype=np.int64)
+        maindescensnap = np.array(maindescen / TEMPORALHALOIDVAL, dtype=np.int32)
         if (ireverseorder):
-            maindescensnap = numsnaps-1 - maindescensnap
+            maindescensnap = numsnaps - 1 - maindescensnap
         # for each of these haloes, set the head and use the root head information and root snap and set all the information
         # long its branch
         for i in range(numactive):
