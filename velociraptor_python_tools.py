@@ -1571,6 +1571,8 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
     TEMPORALHALOIDVAL is used to parse the halo ids and determine the step size between descendant and progenitor
     """
     print("Building Temporal catalog with head and tails using a descendant tree")
+    #store if merit present in the raw tree
+    imerit=('Merit' in tree[0].keys())
     for k in range(numsnaps):
         halodata[k]['Head'] = np.zeros(numhalos[k], dtype=np.int64)
         halodata[k]['Tail'] = np.zeros(numhalos[k], dtype=np.int64)
@@ -1609,8 +1611,10 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
         if (numhalos[istart] == 0): continue
         #set tails and root tails if necessary
         wdata = np.where(halodata[istart]['Tail'] == 0)[0]
-        print('are tails ',wdata.size)
-        if (wdata.size>0):
+        numareroottails = wdata.size
+        if (iverbose > 0):
+            print(numareroottails,' halos are root tails ')
+        if (numareroottails > 0):
             halodata[istart]['Tail'][wdata] = np.array(halodata[istart]['ID'][wdata],copy=True)
             halodata[istart]['RootTail'][wdata] = np.array(halodata[istart]['ID'][wdata],copy=True)
             halodata[istart]['TailSnap'][wdata] = istart*np.ones(wdata.size, dtype=np.int32)
@@ -1627,16 +1631,19 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
         descencheck=(tree[istart]['Num_descen']>0)
         wdata=np.where(descencheck)[0]
         numwithdescen = wdata.size
-        print('have descen ',numwithdescen)
+        if (iverbose > 0):
+            print(numwithdescen, 'have descendants')
         if (numwithdescen>0):
             # should figure out how to best speed this up
             ranks = np.array([tree[istart]['Rank'][index][0] for index in wdata], dtype=np.int32)
             descenids = np.array([tree[istart]['Descen'][index][0] for index in wdata], dtype=np.int64)
+            descenindex = np.array(descenids % TEMPORALHALOIDVAL - 1, dtype=np.int64)
+            if (imerit):
+                activemerits = np.array([tree[istart]['Merit'][index][0] for index in wdata], dtype=np.int64)
             # rest is quick
-            descensnaps = np.array(descenids/TEMPORALHALOIDVAL, dtype=np.int32)
+            descensnaps = np.array((descenids - descenindex - np.int64(1)) / TEMPORALHALOIDVAL, dtype=np.int32)
             if (ireverseorder):
                 descensnaps = numsnaps - 1 - descensnaps
-            descenindex = np.array(descenids % TEMPORALHALOIDVAL - 1, dtype=np.int64)
             halodata[istart]['HeadRank'][wdata] = np.array(ranks, copy=True)
             halodata[istart]['Head'][wdata] = np.array(descenids, copy=True)
             halodata[istart]['HeadSnap'][wdata] = np.array(descensnaps, copy=True)
@@ -1648,16 +1655,40 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
             wdata2 = np.where(ranks == 0)[0]
             numactive = wdata2.size
             if (numactive>0):
-                activetails=wdata[wdata2]
-                descensnaps=descensnaps[wdata2]
-                descenindex=descenindex[wdata2]
+                activetails = wdata[wdata2]
+                descensnaps = descensnaps[wdata2]
+                descenindex = descenindex[wdata2]
+                if (imerit):
+                    activemerits = activemerits[wdata2]
                 # should parallelise this
                 for i in range(numactive):
                     index, isnap, idescenindex = activetails[i], descensnaps[i], descenindex[i]
-                    halodata[isnap]['Tail'][idescenindex] = halodata[istart]['ID'][index]
-                    halodata[isnap]['RootTail'][idescenindex] = halodata[istart]['RootTail'][index]
-                    halodata[isnap]['TailSnap'][idescenindex] = istart
-                    halodata[isnap]['RootTailSnap'][idescenindex] = halodata[istart]['RootTailSnap'][index]
+                    #add check to see if this root head has already been assigned, then may have an error in the 
+                    #the mpi mesh point
+                    if (halodata[isnap]['Tail'][idescenindex] == 0): 
+                        halodata[isnap]['Tail'][idescenindex] = halodata[istart]['ID'][index]
+                        halodata[isnap]['RootTail'][idescenindex] = halodata[istart]['RootTail'][index]
+                        halodata[isnap]['TailSnap'][idescenindex] = istart
+                        halodata[isnap]['RootTailSnap'][idescenindex] = halodata[istart]['RootTailSnap'][index]
+                    #if tail was assigned then need to compare merits and designed which one to use 
+                    else: 
+                        #if can compare merits
+                        if (imerit): 
+                            curMerit = activemerits[i]
+                            prevTailIndex = np.int64(halodata[isnap]['Tail'][idescenindex] % TEMPORALHALOIDVAL - 1)
+                            prevTailSnap = halodata[isnap]['TailSnap'][idescenindex] 
+                            compMerit = tree[prevTailSnap]['Merit'][prevTailIndex][0]
+                            if (curMerit > compMerit):
+                                halodata[prevTailSnap]['HeadRank'][prevTailIndex]+=1
+                                halodata[isnap]['Tail'][idescenindex] = halodata[istart]['ID'][index]
+                                halodata[isnap]['RootTail'][idescenindex] = halodata[istart]['RootTail'][index]
+                                halodata[isnap]['TailSnap'][idescenindex] = istart
+                                halodata[isnap]['RootTailSnap'][idescenindex] = halodata[istart]['RootTailSnap'][index]
+                            else:
+                                halodata[istart]['HeadRank'][index]=1
+                        #if merits not present then assume first connection found is better
+                        else:
+                            halodata[istart]['HeadRank'][index]=1
             wdata2 = None
             descenids = None
             descensnaps = None
@@ -1673,7 +1704,6 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
             print('finished in', time.clock()-start2)
     if (iverbose > 0):
         print("done with first bit, setting the main branches walking backward",time.clock()-start0)
-
     # now have walked all the main branches and set the root tail, head and tail values
     # in case halo data is with late times at beginning need to process items in reverse
     if (ireverseorder):
@@ -1690,21 +1720,21 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
             print('Setting root heads at ', istart, 'halos', numhalos[istart], 'active', numactive)
         if (numactive == 0):
             continue
+
         haloidarray = halodata[istart]['Tail'][wdata]
-        #haloidarray = halodata[istart]['RootTail'][wdata]
         haloindexarray = np.array(haloidarray % TEMPORALHALOIDVAL -1, dtype=np.int64) 
-        halosnaparray = np.array(np.floor(haloidarray / TEMPORALHALOIDVAL), dtype=np.int32)
+        halosnaparray = np.array((haloidarray - haloindexarray - np.int64(1)) / TEMPORALHALOIDVAL, dtype=np.int32)
+
         if (ireverseorder):
             halosnaparray = numsnaps - 1 - halosnaparray
         # go to root tails and walk the main branch 
-        for i in range(numactive):
+        for i in np.arange(numactive,dtype=np.int64):
             halodata[halosnaparray[i]]['RootHead'][haloindexarray[i]]=halodata[istart]['RootHead'][wdata[i]]
             halodata[halosnaparray[i]]['RootHeadSnap'][haloindexarray[i]]=halodata[istart]['RootHeadSnap'][wdata[i]]
         wdata = None
         haloidarray = None
         haloindexarray = None
         halosnaparray = None
-
     # now go back and find all secondary progenitors and set their root heads
     for istart in snaplist:
         if (numhalos[istart] == 0):
@@ -1723,7 +1753,7 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
         wdata = None
         maindescen = np.array([tree[istart]['Descen'][index][0] for index in rankedhaloindex], dtype=np.int64)
         maindescenindex = np.array(maindescen % TEMPORALHALOIDVAL - 1, dtype=np.int64)
-        maindescensnap = np.array(maindescen / TEMPORALHALOIDVAL, dtype=np.int32)
+        maindescensnap = np.array((maindescen - maindescenindex - np.int64(1)) / TEMPORALHALOIDVAL, dtype=np.int32)
         if (ireverseorder):
             maindescensnap = numsnaps - 1 - maindescensnap
         # for each of these haloes, set the head and use the root head information and root snap and set all the information
