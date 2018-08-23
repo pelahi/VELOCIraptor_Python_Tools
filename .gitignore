@@ -2,3 +2,9 @@
 *.pyc
 
 \.tags
+
+velociraptor_python_tools_cython\.c
+
+*.so
+
+build/

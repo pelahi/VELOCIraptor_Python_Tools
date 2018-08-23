@@ -1623,7 +1623,7 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
         halodata[istart]['Head'] = np.array(halodata[istart]['ID'],copy=True)
         halodata[istart]['HeadSnap'] = istart*np.ones(numhalos[istart])
         #find all halos that have descendants and set there heads
-        if (istart == numsnaps-1): 
+        if (istart == numsnaps-1):
             halodata[istart]['RootHead'] = np.array(halodata[istart]['ID'],copy=True)
             halodata[istart]['RootHeadSnap'] = istart*np.ones(numhalos[istart], dtype=np.int32)
             continue
@@ -1663,20 +1663,20 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
                 # should parallelise this
                 for i in range(numactive):
                     index, isnap, idescenindex = activetails[i], descensnaps[i], descenindex[i]
-                    #add check to see if this root head has already been assigned, then may have an error in the 
+                    #add check to see if this root head has already been assigned, then may have an error in the
                     #the mpi mesh point
-                    if (halodata[isnap]['Tail'][idescenindex] == 0): 
+                    if (halodata[isnap]['Tail'][idescenindex] == 0):
                         halodata[isnap]['Tail'][idescenindex] = halodata[istart]['ID'][index]
                         halodata[isnap]['RootTail'][idescenindex] = halodata[istart]['RootTail'][index]
                         halodata[isnap]['TailSnap'][idescenindex] = istart
                         halodata[isnap]['RootTailSnap'][idescenindex] = halodata[istart]['RootTailSnap'][index]
-                    #if tail was assigned then need to compare merits and designed which one to use 
-                    else: 
+                    #if tail was assigned then need to compare merits and designed which one to use
+                    else:
                         #if can compare merits
-                        if (imerit): 
+                        if (imerit):
                             curMerit = activemerits[i]
                             prevTailIndex = np.int64(halodata[isnap]['Tail'][idescenindex] % TEMPORALHALOIDVAL - 1)
-                            prevTailSnap = halodata[isnap]['TailSnap'][idescenindex] 
+                            prevTailSnap = halodata[isnap]['TailSnap'][idescenindex]
                             compMerit = tree[prevTailSnap]['Merit'][prevTailIndex][0]
                             if (curMerit > compMerit):
                                 halodata[prevTailSnap]['HeadRank'][prevTailIndex]+=1
@@ -1722,12 +1722,12 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
             continue
 
         haloidarray = halodata[istart]['Tail'][wdata]
-        haloindexarray = np.array(haloidarray % TEMPORALHALOIDVAL -1, dtype=np.int64) 
+        haloindexarray = np.array(haloidarray % TEMPORALHALOIDVAL -1, dtype=np.int64)
         halosnaparray = np.array((haloidarray - haloindexarray - np.int64(1)) / TEMPORALHALOIDVAL, dtype=np.int32)
 
         if (ireverseorder):
             halosnaparray = numsnaps - 1 - halosnaparray
-        # go to root tails and walk the main branch 
+        # go to root tails and walk the main branch
         for i in np.arange(numactive,dtype=np.int64):
             halodata[halosnaparray[i]]['RootHead'][haloindexarray[i]]=halodata[istart]['RootHead'][wdata[i]]
             halodata[halosnaparray[i]]['RootHeadSnap'][haloindexarray[i]]=halodata[istart]['RootHeadSnap'][wdata[i]]
@@ -1779,8 +1779,8 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
         rankedhalos = None
         rankedhaloindex = None
         maindescen = None
-        maindescenindex = None 
-        maindescensnaporder = None 
+        maindescenindex = None
+        maindescensnaporder = None
 
     print("Done building", time.clock()-totstart)
 
@@ -2087,11 +2087,15 @@ def GenerateSubhaloLinks(numsnaps, numhalos, halodata, TEMPORALHALOIDVAL=1000000
                 p.join()
             if (iverbose):
                 print("Done snaps", j, "to", j+nthreads, time.clock()-start2)
+                sys.stdout.flush()
+
         else:
             generate_sublinks(numhalos[j], halodata[j], iverbose)
             if (iverbose):
                 print("Done snap", j, time.clock()-start2)
+                sys.stdout.flush()
     print("Done subhalolinks ", time.clock()-start)
+    sys.stdout.flush()
 
 
 def GenerateProgenitorLinks(numsnaps, numhalos, halodata, ireversesnaporder=False,
@@ -2189,7 +2193,9 @@ def GenerateProgenitorLinks(numsnaps, numhalos, halodata, ireversesnaporder=Fals
         halodata[snap]['RightTail'][index] = halodata[snap]['ID'][index]
         if (iverbose):
             print("Done snap", j, time.clock()-start2)
+            sys.stdout.flush()
     print("Done progenitor links ", time.clock()-start)
+    sys.stdout.flush()
 
 
 def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
@@ -2293,18 +2299,15 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
     ForestIDs, ForestSize = np.unique(np.concatenate(
         [halodata[i]['ForestID'] for i in range(numsnaps)]), return_counts=True)
     numforests = len(ForestIDs)
+    maxforest = np.max(ForestSize)
+    print('finished first pass', time.clock()-start2,
+          'have ', numforests, 'initial forests',
+          'with largest forest containing ',maxforest,'(sub)halos')
+    sys.stdout.flush()
+
     ForestSizeStats = dict(zip(ForestIDs, ForestSize))
     # free memory
-    ForestIDs = ForestSize = []
-    #ForestSizeStats['Snapshots'] = [[] for i in range(numsnaps)]
-    # for i in snaplist:
-    #    if (numhalos[i] ==  0): continue
-    #    ForestSizeStats['Snapshots'][i] = np.zeros(numforests, dtype = np.int64)
-    #    activeforest, counts = np.unique(halodata[i]['ForestID'], return_counts = True)
-    #    ForestSizeStats['Snapshots'][i][np.where(np.in1d(ForestIDs, activeforest))] = counts
-    print('finished first pass', time.clock()-start2,
-          'have ', numforests, 'initial forests')
-    print(np.sum(ForestSize), np.max(ForestSize))
+    ForestIDs = ForestSize = None
 
     # now move foward in time looking at descendants of host halos to merge forest ids
     """
@@ -2345,7 +2348,7 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
             for k in snaplist2:
                 if (numhalos[k] == 0):
                     continue
-                descens = []
+                descens = None
                 # find all descendants of currently active halos by finding those whose tails point to snapshot of the descendant list
                 descens = np.where(
                     np.int32(halodata[k]['Tail']/TEMPORALHALOIDVAL) == j)[0]
@@ -2358,7 +2361,7 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
                     if (len(wdata[0]) == 0):
                         continue
                     descens = descens[wdata]
-                    wdata = []
+                    wdata = None
                 # generate descendant forest dictionary containing sizes
                 #descenforestids, descenforestsize = np.unique(halodata[k]['ForestID'][descens], return_counts = True)
                 #descenforest = dict(zip(descenforestids, descenforestsize))
@@ -2389,7 +2392,7 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
                         # check the descenforest list to see how many objects share this forest id, if more than one
                         # run np.where and update the forest ids and the dictionary storing size info
                         # currently the descenforest sizes are not working to I am always running  np.where, not ideal.
-                        wdata = []
+                        wdata = None
                         wdata = np.where(
                             halodata[k]['ForestID'][descens] == curforest)[0]
                         numincursnap = len(wdata)  # descenforest[curforest]
@@ -2417,7 +2420,7 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
                         incforests += 1
                     # otherwise, update the progenitor forest ids. Does mean loops must be interated till no new links found
                     else:
-                        wdata = []
+                        wdata = None
                         wdata = np.where(
                             halodata[j]['ForestID'] == refforest)[0]
                         numincursnap = len(wdata)  # activeforest[refforest]
@@ -2447,11 +2450,13 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
         if (iverbose):
             print('done walking forward, found  ', newforests, ' new forest links at ',
                   numloops, ' loop in a time of ', time.clock()-start2)
+            sys.stdout.flush()
         numloops += 1
         if (newforests == 0):
             break
     print('done linking between forests in %d in a time of %f' %
           (numloops, time.clock()-start1))
+    sys.stdout.flush()
     # get the size of each forest
     ForestSize = np.array([ForestSizeStats[key]
                            for key in ForestSizeStats.keys()])
@@ -2459,8 +2464,8 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
     ForestIDs = np.array(list(ForestSizeStats.keys()))[wdata]
     ForestSize = ForestSize[wdata]
     numforests = len(wdata[0])
-    wdata = []
-    maxforest = max(ForestSize)
+    wdata = None
+    maxforest = np.max(ForestSize)
 
     ForestSizeStats = dict()
     ForestSizeStats['AllSnaps'] = dict(zip(ForestIDs, ForestSize))
@@ -2496,6 +2501,7 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
         if (iverbose > 2):
             print("At snapshot", j, " still have ", halodata[j]['ForestID'].size, len(
                 missingforest[0]), " with no forest id ! Of which ", len(rootheads[0]), " are root heads", len(subrootheads[0]), "are subhalos")
+            sys.stdout.flush()
         #if (iverbose and len(missingforest[0])>0): print("At snapshot", j, " still have ", len(missingforest[0]), " with no forest id ! Of which ", len(rootheads[0]), " are root heads", len(subrootheads[0]), "are subhalos")
         if (len(subrootheads[0]) > 0):
             for isub in subrootheads[0]:
@@ -2505,6 +2511,7 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
                 halodata[j]['ForestLevel'][isub] = halodata[j]['ForestLevel'][hostindex]+1
     # then return this
     print("Done generating forest", time.clock()-start)
+    sys.stdout.flush()
     return ForestSizeStats
 
 
@@ -3142,7 +3149,7 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
     converttocomove = ['Xc', 'Yc', 'Zc', 'Rmax', 'R_200crit']
     keys = halodata[0].keys()
     for key in converttocomove:
-        if key not in keys: 
+        if key not in keys:
             converttocomove.remove(key)
     # convert positions and sizes to comoving if necesary
     if (UnitInfo['Comoving_or_Physical'] == 0 and SimulationInfo['Cosmological_Sim'] == 1):
