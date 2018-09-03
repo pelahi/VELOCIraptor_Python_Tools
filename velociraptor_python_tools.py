@@ -2199,7 +2199,7 @@ def GenerateProgenitorLinks(numsnaps, numhalos, halodata, ireversesnaporder=Fals
 
 
 def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
-                   ireversesnaporder=False, TEMPORALHALOIDVAL=1000000000000, iverbose=1,
+                   ireversesnaporder=False, TEMPORALHALOIDVAL=1000000000000, iverbose=2,
                    interactiontime=2, ispatialintflag=False, pos_tree=[], cosmo=dict()):
     """
     This code traces all root heads back in time identifying all interacting haloes and bundles them together into the same forest id
@@ -2285,7 +2285,9 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
     # first pass assigning forests based on FOF and subs
     offset = 0
     start2 = time.clock()
-    print('starting first pass in producing forest ids')
+    print('starting first pass in producing forest ids using', nsnapsearch, 
+          'snapshots being serached and', TEMPORALHALOIDVAL, 'defining temporal id')
+    sys.stdout.flush()
     for j in snaplist:
         if (numhalos[j] == 0):
             continue
@@ -2325,6 +2327,7 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
         start2 = time.clock()
         if (iverbose):
             print('walking forward in time looking at descendants')
+            sys.stdout.flush()
         if (ireversesnaporder):
             snaplist = np.arange(0, numsnaps-1, dtype=np.int32)[::-1]
         else:
@@ -2332,6 +2335,7 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
         for j in snaplist:
             if (iverbose > 1):
                 print("starting snapshot %d containing %d " % (j, numhalos[j]))
+                sys.stdout.flush()
             if (numhalos[j] == 0):
                 continue
             start3 = time.clock()
@@ -2367,11 +2371,42 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
                 #descenforest = dict(zip(descenforestids, descenforestsize))
                 # debugging dictionary
                 #touchdescenforest = dict(zip(descenforestids, np.zeros(len(descenforestids))))
+
+                #lets load stuff into local memory in simple np.arrays
+                tailindexarray=np.array((halodata[k]['Tail'][descens] % TEMPORALHALOIDVAL-1),dtype=np.int64,copy=True)
+                curforestarray=np.array(halodata[k]['ForestID'][descens] ,dtype=np.int64,copy=True)
+                refforestarray=np.array(halodata[j]['ForestID'][tailindexarray] ,dtype=np.int64,copy=True)
+                #find instances where curforest doesn't equal refforest
+                diffforest1=np.where(curforestarray>refforestarray)[0]
+                diffforest2=np.where(curforestarray<refforestarray)[0]
+
+                #update cur forests to ref forests
+                foo,numnewforests=np.unique(halodata[j]['ForestID'][tailindexarray][diffforest1],return_counts=True)
+                halodata[k]['ForestID'][descens][diffforest1]=halodata[j]['ForestID'][tailindexarray][diffforest1]
+                newforests+=numnewforests
+                incforests+=numnewforests
+
+                #update ref forests to cur forests
+                foo,numnewforests=np.unique(halodata[k]['ForestID'][descens][diffforest2],return_counts=True)
+                halodata[j]['ForestID'][tailindexarray][diffforest2]=halodata[k]['ForestID'][descens][diffforest2]
+                newforests+=numnewforests
+                incforests+=numnewforests
+
+
+                tailindexarray=None
+                curforestarray=None
+                refforestarray=None
+                diffforest1=None
+                diffforest2=None
+
+                #old loop 
+                """
                 for idescen in descens:
                     itail = np.int64(
                         halodata[k]['Tail'][idescen] % TEMPORALHALOIDVAL-1)
-                    curforest = halodata[k]['ForestID'][idescen]
-                    refforest = halodata[j]['ForestID'][itail]
+                    #this is likely the slowest point, loading data into cache
+                    #curforest = halodata[k]['ForestID'][idescen]
+                    #refforest = halodata[j]['ForestID'][itail]
 
                     # it is possible that after updating can have the descedants forest id match its progenitor forest id so do nothing if this is the case
                     if (curforest == refforest):
@@ -2404,7 +2439,7 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
                         #activeforest[refforest] += numincursnap
                         for ii in descens[wdata]:
                             halodata[k]['ForestID'][ii] = refforest
-                        """
+                        " " "
                         if (numincursnap>1):
                             touchdescenforest[curforest] = 2
                             touchdescenforest[refforest] = -2
@@ -2414,7 +2449,7 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
                             touchdescenforest[halodata[k]['ForestID'][idescen]] = 1
                             touchdescenforest[halodata[j]['ForestID'][itail]] = -1
                             halodata[k]['ForestID'][idescen] = refforest
-                        """
+                        " " "
 
                         newforests += 1
                         incforests += 1
@@ -2432,7 +2467,7 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
                         #descenforest[curforest] += numincursnap
                         for ii in wdata:
                             halodata[j]['ForestID'][ii] = curforest
-                        """
+                        " " "
                         if (numincursnap>1):
                             touchdescenforest[curforest] = 4
                             wdata = np.where(halodata[j]['ForestID'] ==  refforest)[0]
@@ -2440,13 +2475,15 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
                         else :
                             touchdescenforest[curforest] = 3
                             halodata[j]['ForestID'][itail] = curforest
-                        """
+                        " " "
 
                         newforests += 1
                         incforests += 1
+            """
             if (iverbose > 1):
                 print("done snap %d containing %d halos and found %d new forest links in a time of %f" % (
                     j, numhalos[j], incforests, time.clock()-start3))
+                sys.stdout.flush()
         if (iverbose):
             print('done walking forward, found  ', newforests, ' new forest links at ',
                   numloops, ' loop in a time of ', time.clock()-start2)
@@ -2458,6 +2495,7 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
           (numloops, time.clock()-start1))
     sys.stdout.flush()
     # get the size of each forest
+    """
     ForestSize = np.array([ForestSizeStats[key]
                            for key in ForestSizeStats.keys()])
     wdata = np.where(ForestSize > 0)
@@ -2465,6 +2503,11 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
     ForestSize = ForestSize[wdata]
     numforests = len(wdata[0])
     wdata = None
+    maxforest = np.max(ForestSize)
+    """
+    ForestIDs, ForestSize = np.unique(np.concatenate(
+        [halodata[i]['ForestID'] for i in range(numsnaps)]), return_counts=True)
+    numforests = len(ForestIDs)
     maxforest = np.max(ForestSize)
 
     ForestSizeStats = dict()
