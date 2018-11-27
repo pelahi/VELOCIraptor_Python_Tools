@@ -2200,6 +2200,7 @@ def GenerateProgenitorLinks(numsnaps, numhalos, halodata, ireversesnaporder=Fals
 
 def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
                    ireversesnaporder=False, TEMPORALHALOIDVAL=1000000000000, iverbose=2,
+                   icheckforest=False,
                    interactiontime=2, ispatialintflag=False, pos_tree=[], cosmo=dict()):
     """
     This code traces all root heads back in time identifying all interacting haloes and bundles them together into the same forest id
@@ -2227,6 +2228,8 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
         Allows one to quickly parse a Halo ID to determine the snapshot it exists at and its index.
     iverbose : int
         verbosity of function (0, minimal, 1, verbose, 2 chatterbox)
+    icheckforest : bool
+        run final check on forest 
     interactiontime : int
         Optional functionality not implemented yet. Allows forest to be split if connections do not span
         more than this number of snapshots
@@ -2285,7 +2288,7 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
     # first pass assigning forests based on FOF and subs
     offset = 0
     start2 = time.clock()
-    print('starting first pass in producing forest ids using', nsnapsearch, 
+    print('starting first pass in producing forest ids using', nsnapsearch,
           'snapshots being serached and', TEMPORALHALOIDVAL, 'defining temporal id')
     sys.stdout.flush()
     for j in snaplist:
@@ -2314,7 +2317,7 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
     # free memory
     ForestIDs = ForestSize = None
 
-    # now proceed to find new mappings 
+    # now proceed to find new mappings
     start1 = time.clock()
     numloops = 0
     while (True):
@@ -2366,7 +2369,7 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
                     # it is possible that after updating can have the descedants forest id match its progenitor forest id so do nothing if this is the case
                     if (ForestMap[curforest] == ForestMap[refforest]):
                         continue
-                    # if ref forest is smaller update the mapping 
+                    # if ref forest is smaller update the mapping
                     if (ForestMap[curforest] > ForestMap[refforest]):
                         ForestMap[curforest]=ForestMap[refforest]
                         newforests += 1
@@ -2420,29 +2423,30 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
                                      i][np.where(np.in1d(ForestIDs, activeforest))] = counts
 
     start2 = time.clock()
-    # first identify all subhalos and see if any have subhalo connections with different than their host
-    if (ireversesnaporder):
-        snaplist = np.arange(0, numsnaps, dtype=np.int32)
-    else:
-        snaplist = np.arange(numsnaps-1, -1, -1)
-    for j in snaplist:
-        if (numhalos[j] == 0):
-             continue
-        subs = np.where(halodata[j]['hostHaloID'] != -1)[0]
-        nomatchsubs = 0
-        if (subs.size==0): continue
-        hosts = np.array(halodata[j]['hostHaloID'][subs] % 1000000000000 - 1, dtype=np.int64)
-        mismatch = np.where(halodata[j]['ForestID'][subs] != halodata[j]['ForestID'][hosts])[0]
-        nomatchsubs += mismatch.size
-        if (mismatch.size > 0):
-            print('ERROR: snap',j,'nomatch subs',mismatch.size, 'totsubs',subs.size)
-    if (nomatchsubs > 0):
-        print('ERROR, forest ids show mistmatches between subs and hosts',nomatchsubs)
-        print('Returning null and reseting forest ids')
-        for j in range(numsnaps):
-            halodata[j]["ForestID"] = np.ones(numhalos[j], dtype=np.int64)*-1
-            halodata[j]["ForestLevel"] = np.ones(numhalos[j], dtype=np.int32)*-1
-        return []
+    if (icheckforest):
+        # first identify all subhalos and see if any have subhalo connections with different than their host
+        if (ireversesnaporder):
+            snaplist = np.arange(0, numsnaps, dtype=np.int32)
+        else:
+            snaplist = np.arange(numsnaps-1, -1, -1)
+        for j in snaplist:
+            if (numhalos[j] == 0):
+                 continue
+            subs = np.where(halodata[j]['hostHaloID'] != -1)[0]
+            nomatchsubs = 0
+            if (subs.size==0): continue
+            hosts = np.array(halodata[j]['hostHaloID'][subs] % 1000000000000 - 1, dtype=np.int64)
+            mismatch = np.where(halodata[j]['ForestID'][subs] != halodata[j]['ForestID'][hosts])[0]
+            nomatchsubs += mismatch.size
+            if (mismatch.size > 0):
+                print('ERROR: snap',j,'nomatch subs',mismatch.size, 'totsubs',subs.size)
+        if (nomatchsubs > 0):
+            print('ERROR, forest ids show mistmatches between subs and hosts',nomatchsubs)
+            print('Returning null and reseting forest ids')
+            for j in range(numsnaps):
+                halodata[j]["ForestID"] = np.ones(numhalos[j], dtype=np.int64)*-1
+                halodata[j]["ForestLevel"] = np.ones(numhalos[j], dtype=np.int32)*-1
+            return []
 
     # then return this
     print("Done generating forest", time.clock()-start)
