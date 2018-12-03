@@ -3282,18 +3282,17 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
             # if no ideal branch fix where we have identified a viable candiate progenitor as
             # phase space properties are the same, then proceed to see if one can
             # fix issues if the are main branch/halo issues
-            #if halo and one of the subhalo's define useful branch line
+            # if halo and one of the subhalo's define useful branch line swap branches
             if (branchfixHalo == -1 and halodata[haloSnap]['hostHaloID'][haloIndex] == -1):
                 # store halo head and its root tail
-                hostHaloHeadRank = treedata[hostHaloHead]['Rank'][haloHostIndex][0]
-                hostHaloHead = halodata[i]['Head'][haloHostIndex]
-                hostHaloHeadSnap = np.uint64(hostHaloHead / TEMPORALHALOIDVAL)
-                hostHaloHeadIndex = np.uint64(hostHaloHead % TEMPORALHALOIDVAL-1)
-                hostHaloHeadRootTail = halodata[hostHaloHeadSnap]['RootTail'][hostHaloHeadIndex]
+                haloHead = halodata[i]['Head'][haloIndex]
+                haloHeadSnap = np.uint64(haloHead / TEMPORALHALOIDVAL)
+                haloHeadIndex = np.uint64(haloHead % TEMPORALHALOIDVAL-1)
+                haloHeadRootTail = halodata[haloHeadSnap]['RootTail'][haloHeadIndex]
                 # find subhalos that have the same root descendant and share object's descendant root tail
                 subs = np.where((halodata[haloSnap]['hostHaloID'] == haloHost) *
-                    (halodata[haloSnap]['RootHead'] == hostHaloHead) *
-                    (halodata[haloSnap]['RootTail'] == hostHaloHeadRootTail)
+                    (halodata[haloSnap]['RootHead'] == haloRootHeadID) *
+                    (halodata[haloSnap]['RootTail'] == haloHeadRootTail)
                     )[0]
                 if (subs.size > 0):
                     # with subhalo(s) of interest check to see if their progenitors point to halo a secdonary descendant
@@ -3310,18 +3309,19 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
             # subhalo branch line
             if (branchfixHalo == -1 and halodata[haloSnap]['hostHaloID'][haloIndex] != -1):
                 haloHostIndex = np.uint64(haloHost % TEMPORALHALOIDVAL-1)
+                haloHostSnap = i
                 haloHostRootHeadID = halodata[i]['RootHead'][haloHostIndex]
                 if (haloHostRootHeadID == haloRootHeadID):
-                    hostHaloHeadRank = treedata[hostHaloHead]['Rank'][haloHostIndex][0]
-                    hostHaloHead = halodata[i]['Head'][haloHostIndex]
-                    hostHaloHeadSnap = np.uint64(hostHaloHead / TEMPORALHALOIDVAL)
-                    hostHaloHeadIndex = np.uint64(hostHaloHead % TEMPORALHALOIDVAL-1)
-                    hostHaloHeadRootTail = halodata[hostHaloHeadSnap]['RootTail'][hostHaloHeadIndex]
+                    haloHostHeadRank = treedata[i]['Rank'][haloHostIndex][0]
+                    haloHostHead = halodata[i]['Head'][haloHostIndex]
+                    haloHostHeadSnap = np.uint64(haloHostHead / TEMPORALHALOIDVAL)
+                    haloHostHeadIndex = np.uint64(haloHostHead % TEMPORALHALOIDVAL-1)
+                    haloHostHeadRootTail = halodata[haloHostHeadSnap]['RootTail'][haloHostHeadIndex]
                     # and this descendant is the primary descendant of the subhalo with no progenitor in question
                     # have a fix.
                     # #todo could add additional checks to see if subhalo becomes a halo later on
                     # #todo might want to move foward until host is no longer main branch
-                    if (hostHaloHeadRank > 0 and hostHaloHeadRootTail == haloID):
+                    if (haloHostHeadRank > 0 and haloHostHeadRootTail == haloID):
                         branchfixSwapBranchSub = haloHost
                         branchfixSwapBranchTail = halodata[i]['Tail'][haloHostIndex]
 
