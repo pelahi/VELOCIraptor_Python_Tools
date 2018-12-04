@@ -3525,20 +3525,23 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
         num_with_more_descen = 0
         for isearch in searchlist:
             wdata = np.where(treedata[isearch]['Num_descen']>1)[0]
-            temparray['RootHead'] = np.concatenate([temparray['RootHead'],halodata[isearch]['RootHead'][wdata]])
+            if (wdata.size == 0):
+                continue
+            num_with_more_descen += wdata.size
+            temparray['RootHead'] = np.concatenate([temparray['RootHead'],halodata[isearch]['RootHead'][w$
             temparray['ID'] = np.concatenate([temparray['ID'],halodata[isearch]['ID'][wdata]])
             temparray['npart'] = np.concatenate([temparray['npart'],halodata[isearch]['npart'][wdata]])
             temptemparray=np.zeros(wdata.size, dtype=np.int64)
             for iw in range(wdata.size):
-                temptemparray[iw]=treedata[isearch]['Descen'][wdata][1]
+                temptemparray[iw]=treedata[isearch]['Descen'][wdata[iw]][1]
             temparray['Descen'] = np.concatenate([temparray['Descen'],temptemparray])
             temptemparray=np.zeros(wdata.size, dtype=np.int32)
             for iw in range(wdata.size):
-                temptemparray[iw]=treedata[isearch]['Rank'][wdata][1]
+                temptemparray[iw]=treedata[isearch]['Rank'][wdata[iw]][1]
             temparray['Rank'] = np.concatenate([temparray['Rank'],temptemparray])
             temptemparray=np.zeros(wdata.size, dtype=np.float32)
             for iw in range(wdata.size):
-                temptemparray[iw]=treedata[isearch]['Merit'][wdata][1]
+                temptemparray[iw]=treedata[isearch]['Merit'][wdata[iw]][1]
             temparray['Merit'] = np.concatenate([temparray['Merit'],temptemparray])
 
         # have object with no progenitor
