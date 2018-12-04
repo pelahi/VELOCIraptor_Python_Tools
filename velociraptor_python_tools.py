@@ -3501,6 +3501,35 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
     nfix = dict()
     for key in fixkeylist:
         nfix[key]= np.zeros(numsnaps)
+    temparray = None
+    temparray = {'RootHead':np.array([]), 'ID': np.array([]), 'npart': np.array([]),
+                'Descen': np.array([]), 'Rank': np.array([]), 'Merit': np.array([]),
+                }
+    num_with_more_descen = 0
+    start1=time.clock()
+    for isearch in range(numsnaps):
+        if (numhalos[i] == 0):
+            continue
+        wdata = np.where(treedata[isearch]['Num_descen']>1)[0]
+        if (wdata.size == 0):
+            continue
+        num_with_more_descen += wdata.size
+        temparray['RootHead'] = np.concatenate([temparray['RootHead'],halodata[isearch]['RootHead'][w$
+        temparray['ID'] = np.concatenate([temparray['ID'],halodata[isearch]['ID'][wdata]])
+        temparray['npart'] = np.concatenate([temparray['npart'],halodata[isearch]['npart'][wdata]])
+        temptemparray=np.zeros(wdata.size, dtype=np.int64)
+        for iw in range(wdata.size):
+            temptemparray[iw]=treedata[isearch]['Descen'][wdata[iw]][1]
+        temparray['Descen'] = np.concatenate([temparray['Descen'],temptemparray])
+        temptemparray=np.zeros(wdata.size, dtype=np.int32)
+        for iw in range(wdata.size):
+            temptemparray[iw]=treedata[isearch]['Rank'][wdata[iw]][1]
+        temparray['Rank'] = np.concatenate([temparray['Rank'],temptemparray])
+        temptemparray=np.zeros(wdata.size, dtype=np.float32)
+        for iw in range(wdata.size):
+            temptemparray[iw]=treedata[isearch]['Merit'][wdata[iw]][1]
+        temparray['Merit'] = np.concatenate([temparray['Merit'],temptemparray])
+    print('Finished building temporary array for quick search containing ',num_with_more_descen,'in',time.clock()-start1)
     for i in range(numsnaps-1):
         start1=time.clock()
         # find halos with no progenitors that are large enough and continue to exist for several snapshots
@@ -3518,31 +3547,6 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
         searchlist = range(np.int32(i-1),np.int32(searchrange-1),-1)
         # make flatten array of tree structure within temporal search window to
         # speed up process of searching for related objects
-        temparray = None
-        temparray = {'RootHead':np.array([]), 'ID': np.array([]), 'npart': np.array([]),
-                    'Descen': np.array([]), 'Rank': np.array([]), 'Merit': np.array([]),
-                    }
-        num_with_more_descen = 0
-        for isearch in searchlist:
-            wdata = np.where(treedata[isearch]['Num_descen']>1)[0]
-            if (wdata.size == 0):
-                continue
-            num_with_more_descen += wdata.size
-            temparray['RootHead'] = np.concatenate([temparray['RootHead'],halodata[isearch]['RootHead'][w$
-            temparray['ID'] = np.concatenate([temparray['ID'],halodata[isearch]['ID'][wdata]])
-            temparray['npart'] = np.concatenate([temparray['npart'],halodata[isearch]['npart'][wdata]])
-            temptemparray=np.zeros(wdata.size, dtype=np.int64)
-            for iw in range(wdata.size):
-                temptemparray[iw]=treedata[isearch]['Descen'][wdata[iw]][1]
-            temparray['Descen'] = np.concatenate([temparray['Descen'],temptemparray])
-            temptemparray=np.zeros(wdata.size, dtype=np.int32)
-            for iw in range(wdata.size):
-                temptemparray[iw]=treedata[isearch]['Rank'][wdata[iw]][1]
-            temparray['Rank'] = np.concatenate([temparray['Rank'],temptemparray])
-            temptemparray=np.zeros(wdata.size, dtype=np.float32)
-            for iw in range(wdata.size):
-                temptemparray[iw]=treedata[isearch]['Merit'][wdata[iw]][1]
-            temparray['Merit'] = np.concatenate([temparray['Merit'],temptemparray])
 
         # have object with no progenitor
         for inoprog in noprog[0]:
@@ -3598,6 +3602,7 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
             """
             candidates = np.where((temparray['RootHead'] == haloRootHeadID) *
                 (temparray['npart'] >= meritlim*halodata[i]['npart'][inoprog]) *
+                (temparray['ID'] != haloID) *
                 (temparray['Descen'] == haloID) *
                 (temparray['Merit'] >= meritlim) *
                 (temparray['Rank'] >= 0 )
