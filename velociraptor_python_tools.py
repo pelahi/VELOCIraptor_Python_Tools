@@ -3306,6 +3306,25 @@ def FixBranchCheckReAssignMainBranch(numsnaps, treedata, halodata, numhalos,
               'npart', halodata[haloSnap]['npart'][haloIndex], halodata[haloSnap]['npart'][haloHostIndex],
               'Stype', halodata[haloSnap]['Structuretype'][haloIndex], halodata[haloSnap]['Structuretype'][haloHostIndex]
               )
+
+        if (iverbose > 2):
+            mainbranchlength = sublifelength = 0
+            curHalo = haloID
+            curSnap = np.uint64(curHalo / TEMPORALHALOIDVAL)
+            curIndex = np.uint64(curHalo % TEMPORALHALOIDVAL - 1)
+            curRootTail = halodata[curSnap]['RootTail'][curIndex]
+            curRootHead = halodata[curSnap]['RootHead'][curIndex]
+            while (curRootTail == haloID):
+                mainbranchlength += 1
+                sublifelength += (halodata[curSnap]['hostHaloID'][curIndex] != -1)
+                if (curHalo == curRootHead):
+                    break
+                curHalo = halodata[curSnap]['Head'][curIndex]
+                curSnap = np.uint64(curHalo / TEMPORALHALOIDVAL)
+                curIndex = np.uint64(curHalo % TEMPORALHALOIDVAL - 1)
+                curRootTail = halodata[curSnap]['RootTail'][curIndex]
+            print(haloID,'meets condition', (haloHostRootHeadID == haloRootHeadID), 'sublife',sublifelength,'mainbranch',mainbranchlength)
+        
         if (haloHostRootHeadID == haloRootHeadID):
             haloHostHeadRank = treedata[haloSnap]['Rank'][haloHostIndex][0]
             haloHostHead = halodata[haloSnap]['Head'][haloHostIndex]
@@ -3364,9 +3383,10 @@ def FixBranchCheckReAssignMainBranchAdjustTree(numsnaps, treedata, halodata, num
         halodata[branchfixSnap]['RootTailSnap'][branchfixIndex] = branchfixSnap
         # also need to adjust any secondary progenitors of this subhalo
         ncount=0
-        nprog=halodata[branchfixSnap]['NumProgen'][branchfixIndex]
+        nprog=halodata[branchfixSnap]['Num_progen'][branchfixIndex]
         if (nprog > 1):
-            for i in range(branchfixSnap-1,searchrange-1,-1):
+            searchlist=range(np.int32(branchfixSnap-1),np.int32(searchrange-1),-1)
+            for i in searchlist:
                 wdata=np.where(halodata[i]['Head']==branchfixSwapBranch)[0]
                 halodata[i]['Head'][wdata] = haloID
                 halodata[i]['HeadSnap'][wdata] = haloSnap
@@ -3393,9 +3413,10 @@ def FixBranchCheckReAssignMainBranchAdjustTree(numsnaps, treedata, halodata, num
         halodata[haloHeadSnap]['TailSnap'][haloHeadIndex] = branchfixSnap
         # adjust any secondary progenitors of this subhalo to point to halo
         ncount=0
-        nprog=halodata[haloIndex]['NumProgen'][haloSnap]
+        nprog=halodata[haloSnap]['Num_progen'][haloIndex]
         if (nprog > 1):
-            for i in range(branchfixSnap-1,searchrange-1,-1):
+            searchlist=range(np.int32(branchfixSnap-1),np.int32(searchrange-1),-1)
+            for i in searchlist:
                 wdata=np.where(halodata[i]['Head']==haloSnap)[0]
                 halodata[i]['Head'][wdata] = branchfixSwapBranch
                 halodata[i]['HeadSnap'][wdata] = branchfixSnap
@@ -3489,10 +3510,12 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
             halodata[i]['npart'] >= npartlim)*(halodata[i]['Head'] != halodata[i]['ID']))
         if (len(noprog[0]) == 0):
             if (iverbose):
-                print('finshed snap, no missing progens ',i,time.clock()-start1)
+                print('finshed snap, no missing progens', i, time.clock()-start1)
             continue
         if (iverbose):
-            print('snap',i,' number with missing progens ',len(noprog[0]))
+            print('snap', i, 'number with missing progens', len(noprog[0]))
+        searchrange = max(0, i-nsnapsearch)
+        searchlist = range(np.int32(i-1),np.int32(searchrange-1),-1)
         # have object with no progenitor
         for inoprog in noprog[0]:
             # have object with no progenitor
@@ -3520,10 +3543,9 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
                       'head_tail=',halodata[np.uint32(halodata[i]['Head'][inoprog]/TEMPORALHALOIDVAL)]['Tail'][np.uint64(halodata[i]['Head'][inoprog] % TEMPORALHALOIDVAL-1)])
             # first lets see if any halos previous to this point with a nsnapsearch radius
             # point to halo with no progenitor as a high merit, 1 rank connection.
-            searchrange = max(0, i-nsnapsearch)
             mergeHalo = -1
             mergeMerit = -1
-            for isearch in range(searchrange, i):
+            for isearch in searchlist:
                 # current candiates pointing to same root head
                 candidates = np.where((halodata[isearch]['RootHead'] == haloRootHeadID)*(
                     halodata[isearch]['npart'] >= meritlim*halodata[i]['npart'][inoprog]))
@@ -3561,10 +3583,12 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
                     else :
                         nfix['SubSwapFix'][i] += 1
                     FixBranchCheckReAssignMainBranchAdjustTree(numsnaps, treedata, halodata, numhalos,
+                            nsnapsearch,
                             TEMPORALHALOIDVAL, iverbose,
                             haloID, haloSnap, haloIndex, haloRootHeadID,
                             branchfixSwapBranch, branchfixSwapBranchTail
                             )
+                    continue
                 else :
                     nfix['NoFix'][i] +=1
                     continue
@@ -3864,6 +3888,7 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
                     else :
                         nfix['SubSwapFix'][i] += 1
                     FixBranchCheckReAssignMainBranchAdjustTree(numsnaps, treedata, halodata, numhalos,
+                            nsnapsearch,
                             TEMPORALHALOIDVAL, iverbose,
                             haloID, haloSnap, haloIndex, haloRootHeadID,
                             branchfixSwapBranch, branchfixSwapBranchTail
@@ -3943,7 +3968,7 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
             """
 
         if (iverbose):
-            print('finshed snap ', i, 'in', time.clock()-start1)
+            print('finshed snap ', i,'with',numhalos[i],'in', time.clock()-start1)
             print('Number of fixes:')
             for key in fixkeylist:
                 print(key, nfix[key][i])
