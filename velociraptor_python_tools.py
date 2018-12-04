@@ -3324,7 +3324,7 @@ def FixBranchCheckReAssignMainBranch(numsnaps, treedata, halodata, numhalos,
                 curIndex = np.uint64(curHalo % TEMPORALHALOIDVAL - 1)
                 curRootTail = halodata[curSnap]['RootTail'][curIndex]
             print(haloID,'meets condition', (haloHostRootHeadID == haloRootHeadID), 'sublife',sublifelength,'mainbranch',mainbranchlength)
-        
+
         if (haloHostRootHeadID == haloRootHeadID):
             haloHostHeadRank = treedata[haloSnap]['Rank'][haloHostIndex][0]
             haloHostHead = halodata[haloSnap]['Head'][haloHostIndex]
@@ -3516,6 +3516,31 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
             print('snap', i, 'number with missing progens', len(noprog[0]))
         searchrange = max(0, i-nsnapsearch)
         searchlist = range(np.int32(i-1),np.int32(searchrange-1),-1)
+        # make flatten array of tree structure within temporal search window to
+        # speed up process of searching for related objects
+        temparray = None
+        temparray = {'RootHead':np.array([]), 'ID': np.array([]), 'npart': np.array([]),
+                    'Descen': np.array([]), 'Rank': np.array([]), 'Merit': np.array([]),
+                    }
+        num_with_more_descen = 0
+        for isearch in searchlist:
+            wdata = np.where(treedata[isearch]['Num_descen']>1)[0]
+            temparray['RootHead'] = np.concatenate([temparray['RootHead'],halodata[isearch]['RootHead'][wdata]])
+            temparray['ID'] = np.concatenate([temparray['ID'],halodata[isearch]['ID'][wdata]])
+            temparray['npart'] = np.concatenate([temparray['npart'],halodata[isearch]['npart'][wdata]])
+            temptemparray=np.zeros(wdata.size, dtype=np.int64)
+            for iw in range(wdata.size):
+                temptemparray[iw]=treedata[isearch]['Descen'][wdata][1]
+            temparray['Descen'] = np.concatenate([temparray['Descen'],temptemparray])
+            temptemparray=np.zeros(wdata.size, dtype=np.int32)
+            for iw in range(wdata.size):
+                temptemparray[iw]=treedata[isearch]['Rank'][wdata][1]
+            temparray['Rank'] = np.concatenate([temparray['Rank'],temptemparray])
+            temptemparray=np.zeros(wdata.size, dtype=np.float32)
+            for iw in range(wdata.size):
+                temptemparray[iw]=treedata[isearch]['Merit'][wdata][1]
+            temparray['Merit'] = np.concatenate([temparray['Merit'],temptemparray])
+
         # have object with no progenitor
         for inoprog in noprog[0]:
             # have object with no progenitor
@@ -3545,6 +3570,7 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
             # point to halo with no progenitor as a high merit, 1 rank connection.
             mergeHalo = -1
             mergeMerit = -1
+            """
             for isearch in searchlist:
                 # current candiates pointing to same root head
                 candidates = np.where((halodata[isearch]['RootHead'] == haloRootHeadID)*(
@@ -3566,6 +3592,17 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
                         mergeMerit = treedata[isearch]['Merit'][ican][matches[0][0]]
                 if (mergeHalo != -1):
                     break
+            """
+            candidates = np.where((temparray['RootHead'] == haloRootHeadID) *
+                (temparray['npart'] >= meritlim*halodata[i]['npart'][inoprog]) *
+                (temparray['Descen'] == haloID) *
+                (temparray['Merit'] >= meritlim) *
+                (temparray['Rank'] >= 0 )
+                )[0]
+            if (candidates.size > 0):
+                ican = np.argmax(temparray['Merit'][candidates])
+                mergeHalo = temparray['ID'][candidates[ican]]
+                mergeMerit = temparray['Merit'][candidates[ican]]
             # if no merge halo candidate found then cannot fully correct tree by assigning
             # object a new progenitor
             # instead can see if object's main branch can be reassigned to another halo
