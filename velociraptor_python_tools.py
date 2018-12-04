@@ -3502,54 +3502,89 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
     for key in fixkeylist:
         nfix[key]= np.zeros(numsnaps)
     temparray = None
-    temparray = {'RootHead':np.array([]), 'ID': np.array([]), 'npart': np.array([]),
-                'Descen': np.array([]), 'Rank': np.array([]), 'Merit': np.array([]),
+    temparray = {'RootHead':np.array([], dtype=np.int64), 'ID': np.array([], dtype=np.int64), 'npart': np.array([], dtype=np.int32),
+                'Descen': np.array([], dtype=np.int64), 'Rank': np.array([], dtype=np.int32), 'Merit': np.array([], np.float32),
                 }
     num_with_more_descen = 0
     start1=time.clock()
+    # make flatten array of tree structure within temporal search window to
+    # speed up process of searching for related objects
     for isearch in range(numsnaps):
-        if (numhalos[i] == 0):
+        if (numhalos[isearch] == 0):
             continue
         wdata = np.where(treedata[isearch]['Num_descen']>1)[0]
         if (wdata.size == 0):
             continue
         num_with_more_descen += wdata.size
-        temparray['RootHead'] = np.concatenate([temparray['RootHead'],halodata[isearch]['RootHead'][w$
+        temparray['RootHead'] = np.concatenate([temparray['RootHead'],halodata[isearch]['RootHead'][wdata]])
         temparray['ID'] = np.concatenate([temparray['ID'],halodata[isearch]['ID'][wdata]])
         temparray['npart'] = np.concatenate([temparray['npart'],halodata[isearch]['npart'][wdata]])
-        temptemparray=np.zeros(wdata.size, dtype=np.int64)
-        for iw in range(wdata.size):
-            temptemparray[iw]=treedata[isearch]['Descen'][wdata[iw]][1]
-        temparray['Descen'] = np.concatenate([temparray['Descen'],temptemparray])
-        temptemparray=np.zeros(wdata.size, dtype=np.int32)
-        for iw in range(wdata.size):
-            temptemparray[iw]=treedata[isearch]['Rank'][wdata[iw]][1]
-        temparray['Rank'] = np.concatenate([temparray['Rank'],temptemparray])
-        temptemparray=np.zeros(wdata.size, dtype=np.float32)
-        for iw in range(wdata.size):
-            temptemparray[iw]=treedata[isearch]['Merit'][wdata[iw]][1]
-        temparray['Merit'] = np.concatenate([temparray['Merit'],temptemparray])
+        if ('_Offsets' in treedata[isearch].keys()):
+            temptemparray = treedata[isearch]['_Offsets'][wdata]+1
+            temparray['Descen'] = np.concatenate([temparray['Descen'],treedata[isearch]['_Descens'][temptemparray]])
+            temparray['Rank'] = np.concatenate([temparray['Rank'],treedata[isearch]['_Ranks'][temptemparray]])
+            temparray['Merit'] = np.concatenate([temparray['Merit'],treedata[isearch]['_Merits'][temptemparray]])
+        else:
+            temptemparray=np.zeros(wdata.size, dtype=np.int64)
+            for iw in range(wdata.size):
+                temptemparray[iw]=treedata[isearch]['Descen'][wdata[iw]][1]
+            temparray['Descen'] = np.concatenate([temparray['Descen'],temptemparray])
+            temptemparray=np.zeros(wdata.size, dtype=np.int32)
+            for iw in range(wdata.size):
+                temptemparray[iw]=treedata[isearch]['Rank'][wdata[iw]][1]
+            temparray['Rank'] = np.concatenate([temparray['Rank'],temptemparray])
+            temptemparray=np.zeros(wdata.size, dtype=np.float32)
+            for iw in range(wdata.size):
+                temptemparray[iw]=treedata[isearch]['Merit'][wdata[iw]][1]
+            temparray['Merit'] = np.concatenate([temparray['Merit'],temptemparray])
     print('Finished building temporary array for quick search containing ',num_with_more_descen,'in',time.clock()-start1)
+
     for i in range(numsnaps-1):
         start1=time.clock()
         # find halos with no progenitors that are large enough and continue to exist for several snapshots
         if(numhalos[i] == 0):
             continue
         noprog = np.where((halodata[i]['Tail'] == halodata[i]['ID'])*(
-            halodata[i]['npart'] >= npartlim)*(halodata[i]['Head'] != halodata[i]['ID']))
-        if (len(noprog[0]) == 0):
+            halodata[i]['npart'] >= npartlim)*(halodata[i]['Head'] != halodata[i]['ID']))[0]
+        if (noprog.size == 0):
             if (iverbose):
                 print('finshed snap, no missing progens', i, time.clock()-start1)
             continue
         if (iverbose):
-            print('snap', i, 'number with missing progens', len(noprog[0]))
-        searchrange = max(0, i-nsnapsearch)
-        searchlist = range(np.int32(i-1),np.int32(searchrange-1),-1)
-        # make flatten array of tree structure within temporal search window to
-        # speed up process of searching for related objects
+            print('snap', i, 'number with missing progens', noprog.size)
+        #searchrange = max(0, i-nsnapsearch)
+        #searchlist = range(np.int32(i-1),np.int32(searchrange-1),-1)
+
+        # find intersection of noprogen halos with possible progenitors in temparray 
+        start2=time.clock()
+        haloIDarray = halodata[i]['ID'][noprog]
+        haloRootHeadIDarray = halodata[i]['RootHead'][noprog]
+        halonpartarray = halodata[i]['npart'][noprog]
+        mergeCheck = (np.in1d(temparray['RootHead'],haloRootHeadIDarray) *
+                np.in1d(temparray['Descen'], haloIDarray) *
+                (temparray['Merit'] >= meritlim) *
+#                (temparray['Rank'] == 1 ) *
+                (temparray['Rank'] >= 0 )
+                )
+        mergeListDict = None
+        mergeTrue = np.where(mergeCheck)[0]
+        tempDescen = np.array([], np.int64)
+        tempID = np.array([], np.int64)
+        if (mergeTrue.size > 0): 
+            tempDescen = np.array(temparray['Descen'][mergeTrue], dtype=np.int64)
+            tempID = np.array(temparray['ID'][mergeTrue], dtype=np.int64)
+            wdata = np.where(np.in1d(haloIDarray, tempDescen, invert=True))[0]
+            if (wdata.size > 0):
+                tempDescen = np.concatenate([tempDescen,haloIDarray[wdata]])
+                tempID = np.concatenate([tempID,np.int64(-1*np.ones(wdata.size))])
+        else:
+            tempDescen = haloIDarray
+            tempID = np.int64(-1*np.ones(haloIDarray.size))
+        mergeListDict = dict(zip(tempDescen,tempID))
+        print(i,mergeTrue.size,time.clock()-start2)
 
         # have object with no progenitor
-        for inoprog in noprog[0]:
+        for inoprog in noprog:
             # have object with no progenitor
             haloID = halodata[i]['ID'][inoprog]
             haloSnap = np.uint64(haloID/TEMPORALHALOIDVAL)
@@ -3575,9 +3610,9 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
                       'head_tail=',halodata[np.uint32(halodata[i]['Head'][inoprog]/TEMPORALHALOIDVAL)]['Tail'][np.uint64(halodata[i]['Head'][inoprog] % TEMPORALHALOIDVAL-1)])
             # first lets see if any halos previous to this point with a nsnapsearch radius
             # point to halo with no progenitor as a high merit, 1 rank connection.
-            mergeHalo = -1
-            mergeMerit = -1
             """
+            mergeHalo = np.int64(-1)
+            mergeMerit = np.float32(-1)
             for isearch in searchlist:
                 # current candiates pointing to same root head
                 candidates = np.where((halodata[isearch]['RootHead'] == haloRootHeadID)*(
@@ -3599,18 +3634,23 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
                         mergeMerit = treedata[isearch]['Merit'][ican][matches[0][0]]
                 if (mergeHalo != -1):
                     break
-            """
+            oldmergeHalo = mergeHalo
             candidates = np.where((temparray['RootHead'] == haloRootHeadID) *
                 (temparray['npart'] >= meritlim*halodata[i]['npart'][inoprog]) *
                 (temparray['ID'] != haloID) *
                 (temparray['Descen'] == haloID) *
                 (temparray['Merit'] >= meritlim) *
+                (temparray['Rank'] == 1 ) *
                 (temparray['Rank'] >= 0 )
                 )[0]
             if (candidates.size > 0):
                 ican = np.argmax(temparray['Merit'][candidates])
-                mergeHalo = temparray['ID'][candidates[ican]]
-                mergeMerit = temparray['Merit'][candidates[ican]]
+                mergeHalo = np.int64(temparray['ID'][candidates[ican]])
+                mergeMerit = np.float32(temparray['Merit'][candidates[ican]])
+                print("Comparing checks", haloID, candidates, oldmergeHalo, mergeHalo, mergeListDict[haloID])
+            """
+            mergeHalo = mergeListDict[haloID]
+            ##mergeHalo = -1 
             # if no merge halo candidate found then cannot fully correct tree by assigning
             # object a new progenitor
             # instead can see if object's main branch can be reassigned to another halo
@@ -4019,6 +4059,10 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
                 print(key, nfix[key][i])
             print()
     print('Done fixing branches', time.clock()-start)
+    print('For', np.sum(numhalos), 'accros cosmic time')
+    print('Corrections are:')
+    for key in fixkeylist:
+        print(key, np.sum(nfix[key]))
     # convert back to physical coordinates if necessary
     if (UnitInfo['Comoving_or_Physical'] == 0 and SimulationInfo['Cosmological_Sim'] == 1):
         converttocomove = ['Xc', 'Yc', 'Zc', 'Rmax', 'R_200crit']
