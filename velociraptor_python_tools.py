@@ -3293,6 +3293,8 @@ def FixBranchCheckReAssignMainBranch(numsnaps, treedata, halodata, numhalos,
                     break
             if (iverbose > 1 and branchfixSwapBranch != -1):
                 print(haloID, 'halo has taken subhalo main branc of', branchfixSwapBranch)
+        else :
+            branchfixSwapBranch = -2
     # if object is subhalo and host halo mergers with subhalo branch, fix host halo to take over
     # subhalo branch line
     else:
@@ -3338,6 +3340,8 @@ def FixBranchCheckReAssignMainBranch(numsnaps, treedata, halodata, numhalos,
             if (haloHostHeadRank > 0 and haloHostHeadRootTail == haloID):
                 branchfixSwapBranch = haloHost
                 branchfixSwapBranchTail = halodata[haloSnap]['Tail'][haloHostIndex]
+        else :
+            branchfixSwapBranch = -2
         if (iverbose > 1 and branchfixSwapBranch != -1):
             print(haloID, 'subhalo has lost main branch to', haloHost)
     return branchfixSwapBranch,branchfixSwapBranchTail
@@ -3367,7 +3371,7 @@ def FixBranchCheckReAssignMainBranchAdjustTree(numsnaps, treedata, halodata, num
     if (halodata[haloSnap]['hostHaloID'][haloIndex] == -1):
         if (iverbose>1):
             print('halo ', haloID, 'now should have progenitor', branchfixTail,
-                  'taking  over subhalo branch of', branchfixSwapBranch)
+                  'taking over subhalo branch of', branchfixSwapBranch)
         # now adjust, make descendant of subhalo the descendnat of the halo and update root tails
         # and progenitor of subhalo progenitor of halo
         halodata[haloSnap]['Tail'][haloIndex] = branchfixTail
@@ -3497,7 +3501,7 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
         period /= SimulationInfo['ScaleFactor']
     print(time.clock()-start0)
     # store number of fixes
-    fixkeylist = ['TotalFix', 'MergeFix', 'HaloSwapFix', 'SubSwapFix', 'NoFix', 'Spurious']
+    fixkeylist = ['TotalFix', 'MergeFix', 'HaloSwapFix', 'SubSwapFix', 'NoMergeCandiate', 'NoFixAll', 'NoFixMerge', 'NoFixHalo', 'NoFixSub', 'Spurious']
     nfix = dict()
     for key in fixkeylist:
         nfix[key]= np.zeros(numsnaps)
@@ -3604,12 +3608,13 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
         # instead can see if object's main branch can be reassigned to another halo
         # in order to make main branches smooth
         if (mergeHalo == -1):
+            nfix['NoMergeCandiate'][haloSnap] += 1
             branchfixSwapBranch, branchfixSwapBranchTail = FixBranchCheckReAssignMainBranch(numsnaps, treedata, halodata, numhalos,
                         npartlim, meritlim,
                         TEMPORALHALOIDVAL, iverbose,
                         haloID, haloSnap, haloIndex, haloRootHeadID,
                         )
-            if (branchfixSwapBranch != -1):
+            if (branchfixSwapBranch > -1):
                 nfix['TotalFix'][haloSnap] += 1
                 if (halodata[haloSnap]['hostHaloID'][haloIndex] == -1):
                     nfix['HaloSwapFix'][haloSnap] += 1
@@ -3622,8 +3627,15 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
                         branchfixSwapBranch, branchfixSwapBranchTail
                         )
                 continue
+            elif (branchfixSwapBranch == -2):
+                if (halodata[haloSnap]['hostHaloID'][haloIndex] == -1):
+                    nfix['NoFixHalo'][haloSnap] += 1
+                else :
+                    nfix['NoFixSub'][haloSnap] += 1
+                nfix['NoFixAll'][haloSnap] +=1
+                continue
             else :
-                nfix['NoFix'][haloSnap] +=1
+                nfix['NoFixAll'][haloSnap] +=1
                 continue
         # if merge halo does not have a zero rank descendant, nothing to fix
         mergeSnap = np.uint64(mergeHalo / TEMPORALHALOIDVAL)
@@ -3668,19 +3680,25 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
                                     premergeHalo, premergeSnap, premergeIndex,
                                     postmergeHalo,postmergeSnap, postmergeIndex
                                     )
-        if (branchfixHalo == -1):
+        if (branchfixHalo < 0):
+            nfix['NoFixMerge'][haloSnap] += 1
             branchfixSwapBranch, branchfixSwapBranchTail = FixBranchCheckReAssignMainBranch(numsnaps, treedata, halodata, numhalos,
                         npartlim, meritlim,
                         TEMPORALHALOIDVAL, iverbose,
                         haloID, haloSnap, haloIndex, haloRootHeadID,
                         )
-        if (branchfixHalo == -1 and branchfixSwapBranch == -1):
-            nfix['NoFix'][haloSnap] += 1
+        if (branchfixHalo < 0 and branchfixSwapBranch < 0):
+            nfix['NoFixAll'][haloSnap] += 1
+            if (branchfixSwapBranch == -2):
+                if (halodata[haloSnap]['hostHaloID'][haloIndex] == -1):
+                    nfix['NoFixHalo'][haloSnap] += 1
+                else :
+                    nfix['NoFixSub'][haloSnap] += 1
             continue
 
         # Update the
         nfix['TotalFix'][haloSnap] += 1
-        if (branchfixHalo != -1):
+        if (branchfixHalo > -1):
             nfix['MergeFix'][haloSnap] += 1
             FixBranchPhaseCandidateAdjustTree(numsnaps, treedata, halodata, numhalos,
                         TEMPORALHALOIDVAL, iverbose,
@@ -3691,7 +3709,7 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
                         branchfixHalo
             )
         else:
-            if (branchfixSwapBranch != -1):
+            if (branchfixSwapBranch > -1):
                 if (halodata[haloSnap]['hostHaloID'][haloIndex] == -1):
                     nfix['HaloSwapFix'][haloSnap] += 1
                 else :
@@ -3702,6 +3720,16 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
                         haloID, haloSnap, haloIndex, haloRootHeadID,
                         branchfixSwapBranch, branchfixSwapBranchTail
                         )
+            elif (branchfixSwapBranch == -2):
+                if (halodata[haloSnap]['hostHaloID'][haloIndex] == -1):
+                    nfix['NoFixHalo'][haloSnap] += 1
+                else :
+                    nfix['NoFixSub'][haloSnap] += 1
+                nfix['NoFixAll'][haloSnap] +=1
+                continue
+            else :
+                nfix['NoFixAll'][haloSnap] +=1
+                continue
     print('Done fixing branches', time.clock()-start)
     print('For', np.sum(numhalos), 'accros cosmic time')
     print('Corrections are:')
