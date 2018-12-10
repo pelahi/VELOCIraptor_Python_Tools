@@ -3085,6 +3085,7 @@ def FixBranchMergePhaseSearch(numsnaps, treedata, halodata, numhalos,
     if progenitor or its host has more than on progenitor
     examine these possible candidates looking at phase-space positions
     to identify a possible progenitor for object without a progenitor
+    or identify a branch swap where post merge descendant should be swapped
     """
     branchfixMerge = branchfixMergeSwapBranch = -1
     minxdiff = minvdiff = minphase2diff = minnpartdiff = 1e32
@@ -3236,6 +3237,56 @@ def FixBranchMergePhaseSearch(numsnaps, treedata, halodata, numhalos,
             'comparison of phase', minxdiff, minvdiff, minnpartdiff)
     """
     return branchfixMerge, branchfixMergeSwapBranch
+
+def FixBranchPhaseMergeAdjustTree(numsnaps, treedata, halodata, numhalos,
+                            TEMPORALHALOIDVAL, iverbose,
+                            haloID, haloSnap, haloIndex,
+                            mergeHalo, mergeSnap, mergeIndex,
+                            premergeHalo, premergeSnap, premergeIndex,
+                            postmergeHalo,postmergeSnap, postmergeIndex,
+                            branchfixHalo
+                            ):
+    """
+    Adjust halo merger tree by pointing merged halo to object without progenitor
+    by #ref FixBranchMergePhaseSearch
+    """
+
+    # store necessary tree points
+    branchfixSnap = np.uint64(branchfixHalo / TEMPORALHALOIDVAL)
+    branchfixIndex = np.uint64(branchfixHalo % TEMPORALHALOIDVAL - 1)
+    newroottailbranchfix = halodata[branchfixSnap]['RootTail'][branchfixIndex]
+    newroottailbranchfixSnap = np.uint64(newroottailbranchfix / TEMPORALHALOIDVAL)
+    newroottailbranchfixIndex = np.uint64(newroottailbranchfix % TEMPORALHALOIDVAL - 1)
+
+    # adjust branch fix object to point to halo without progenitor
+    halodata[branchfixSnap]['Head'][branchfixIndex] = haloID
+    halodata[branchfixSnap]['HeadSnap'][branchfixIndex] = haloSnap
+
+    # point object without progenitor to branch fix
+    halodata[haloSnap]['Tail'][haloIndex] = branchfixHalo
+    halodata[haloSnap]['TailSnap'][haloIndex] = branchfixSnap
+    halodata[haloSnap]['RootTail'][haloIndex] = newroottailbranchfix
+    halodata[haloSnap]['RootTailSnap'][haloIndex] = newroottailbranchfixSnap
+
+    # update the root tails
+    curHalo = haloID
+    curSnap = np.uint64(curHalo / TEMPORALHALOIDVAL)
+    curIndex = np.uint64(curHalo % TEMPORALHALOIDVAL - 1)
+    while (True):
+        if (iverbose > 2):
+            print('moving up branch to adjust the root tails', curHalo,
+                  curSnap, halodata[curSnap]['RootTail'][curIndex], newroottailbranchfix)
+        halodata[curSnap]['RootTail'][curIndex] = newroottailbranchfix
+        halodata[curSnap]['RootTailSnap'][curIndex] = newroottailbranchfixSnap
+        # if not on main branch exit
+        if (halodata[np.uint32(halodata[curSnap]['Head'][curIndex]/TEMPORALHALOIDVAL)]['Tail'][np.uint64(halodata[curSnap]['Head'][curIndex] % TEMPORALHALOIDVAL-1)] != curHalo):
+            break
+        # if at root head then exit
+        if (halodata[curSnap]['Head'][curIndex] == curHalo):
+            break
+        curHalo = halodata[curSnap]['Head'][curIndex]
+        curSnap = np.uint64(curHalo / TEMPORALHALOIDVAL)
+        curIndex = np.uint64(curHalo % TEMPORALHALOIDVAL - 1)
 
 def FixBranchPhaseBranchSwapSearch(numsnaps, treedata, halodata, numhalos,
                             period,
@@ -3458,9 +3509,8 @@ def FixBranchHaloSubhaloSwapBranch(numsnaps, treedata, halodata, numhalos,
         haloHeadIndex = np.uint64(haloHead % TEMPORALHALOIDVAL-1)
         haloHeadRootTail = halodata[haloHeadSnap]['RootTail'][haloHeadIndex]
 
-        # find subhalos that have the same root descendant and possibly share object's descendant root tail
+        # find subhalos that have the same root descendant
         subs = np.where((halodata[haloSnap]['hostHaloID'] == haloHost) *
-        #    (halodata[haloSnap]['RootTail'] == haloHeadRootTail) *
             (halodata[haloSnap]['RootHead'] == haloRootHeadID)
             )[0]
         if (iverbose > 1):
@@ -3985,7 +4035,7 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
                             postmergeHalo,postmergeSnap, postmergeIndex,
                             secondaryProgenList
                             )
-
+        """
         branchfixMergeSwapBranch = FixBranchPhaseBranchSwapSearch(numsnaps, treedata, halodata, numhalos,
                                     period,
                                     npartlim, meritlim, xdifflim, vdifflim, nsnapsearch,
@@ -3995,7 +4045,7 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
                                     premergeHalo, premergeSnap, premergeIndex,
                                     postmergeHalo,postmergeSnap, postmergeIndex
                                     )
-
+        """
         if (branchfixMergeSwapBranch < 0):
             nfix['NoFixMergeBranchSwap'][haloSnap] += 1
             branchfixSwapHaloOrSubhalo, branchfixSwapHaloOrSubhaloTail = FixBranchHaloSubhaloSwapBranch(numsnaps, treedata, halodata, numhalos,
@@ -4003,7 +4053,7 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
                         TEMPORALHALOIDVAL, iverbose,
                         haloID, haloSnap, haloIndex, haloRootHeadID, mergeHalo
                         )
-        if (branchfixMerge < 0 and
+        if (branchfixMerge < 0 and branchfixMergeSwapBranch < 0 and
             branchfixMergeSwapBranch < 0 and
             branchfixSwapHaloOrSubhalo < 0):
             if (iverbose > 0):
@@ -4052,16 +4102,25 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
 
         # There is a fix so lets adjust the tree
         nfix['TotalFix'][haloSnap] += 1
-        if (branchfixMergeSwapBranch > -1):
-            #print('???mergefix')
+        if (branchfixMerge > -1):
+            nfix['MergeFix'][haloSnap] += 1
+            FixBranchPhaseMergeAdjustTree(numsnaps, treedata, halodata, numhalos,
+                TEMPORALHALOIDVAL, iverbose,
+                haloID, haloSnap, haloIndex,
+                mergeHalo, mergeSnap, mergeIndex,
+                premergeHalo, premergeSnap, premergeIndex,
+                postmergeHalo,postmergeSnap, postmergeIndex,
+                branchfixMerge
+            )
+        elif (branchfixMergeSwapBranch > -1):
             nfix['MergeFixBranchSwap'][haloSnap] += 1
             FixBranchPhaseBranchSwapSearchAdjustTree(numsnaps, treedata, halodata, numhalos,
-                        TEMPORALHALOIDVAL, iverbose,
-                        haloID, haloSnap, haloIndex,
-                        mergeHalo, mergeSnap, mergeIndex,
-                        premergeHalo, premergeSnap, premergeIndex,
-                        postmergeHalo, postmergeSnap, postmergeIndex,
-                        branchfixMergeSwapBranch
+                TEMPORALHALOIDVAL, iverbose,
+                haloID, haloSnap, haloIndex,
+                mergeHalo, mergeSnap, mergeIndex,
+                premergeHalo, premergeSnap, premergeIndex,
+                postmergeHalo, postmergeSnap, postmergeIndex,
+                branchfixMergeSwapBranch
             )
         else:
             if (branchfixSwapHaloOrSubhalo > -1):
