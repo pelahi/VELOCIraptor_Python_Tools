@@ -3086,6 +3086,10 @@ def FixBranchMergePhaseSearch(numsnaps, treedata, halodata, numhalos,
     examine these possible candidates looking at phase-space positions
     to identify a possible progenitor for object without a progenitor
     or identify a branch swap where post merge descendant should be swapped
+
+    #todo adding in searching host objects and all subhalos seems to
+    generate a broken tree as essentially starting to look across multiple branches
+    when trying to patch tree. This is best left for halo tracking codes
     """
 
     branchfixMerge = branchfixMergeSwapBranch = -1
