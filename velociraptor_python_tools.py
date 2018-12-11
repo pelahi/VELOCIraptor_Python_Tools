@@ -3033,7 +3033,9 @@ def FixTruncationBranchSwapsInTreeDescendantAndWrite(rawtreefname, reducedtreena
                                                      descripdata={'Title': 'Tree catalogue', 'VELOCIraptor_version': 1.3, 'Tree_version': 1.1,
                                                                   'Particle_num_threshold': 20, 'Temporal_linking_length': 1, 'Flag_gas': False, 'Flag_star': False, 'Flag_bh': False},
                                                      npartlim=200, meritlim=0.025, xdifflim=2.0, vdifflim=1.0, nsnapsearch=4,
-                                                     TEMPORALHALOIDVAL=1000000000000,
+                                                     searchdepth=2, iswaphalosubhaloflag=1,
+                                                     TEMPORALHALOIDVAL=1000000000000, iverbose=1,
+                                                     ichecktree = False,
                                                      ibuildtree=False, inputtreeformat=2, inputpropformat=2, inputpropsplitformat=0):
     """
     Updates a tree produced by TreeFrog to correct any branch swap events leading to truncation
@@ -3064,6 +3066,7 @@ def FixTruncationBranchSwapsInTreeDescendantAndWrite(rawtreefname, reducedtreena
         atime[i]=halodata[i]['SimulationInfo']['ScaleFactor']
     halodata = FixTruncationBranchSwapsInTreeDescendant(numsnaps, rawtreedata, halodata, numhalos,
                                                         npartlim, meritlim, xdifflim, vdifflim, nsnapsearch,
+                                                        searchdepth, iswaphalosubhaloflag,
                                                         TEMPORALHALOIDVAL)
     WriteWalkableHDFTree(outputupdatedreducedtreename, numsnaps,
                          rawtreedata, numhalos, halodata, atime, descripdata)
@@ -3630,8 +3633,10 @@ def FixBranchHaloSubhaloSwapBranchAdjustTree(numsnaps, treedata, halodata, numha
 
 def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numhalos,
                                              npartlim=200, meritlim=0.025, xdifflim=2.0, vdifflim=1.0, nsnapsearch=4,
+                                             searchdepth=2, iswaphalosubhaloflag=1,
                                              TEMPORALHALOIDVAL=1000000000000, iverbose=1,
-                                             searchdepth=2):
+                                             ichecktree = False
+                                             ):
     """
     Updates the walkable tree information stored with the halo data
     by using the raw tree produced by TreeFrog to correct any branch swap events leading to truncation
@@ -3781,7 +3786,7 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
     noprogID = np.array([],dtype=np.int64)
     noprogRootHead = np.array([],dtype=np.int64)
     #noprognpart = np.array([],dtype=np.int64)
-    for i in range(numsnaps-1):
+    for i in range(numsnaps):
         noprog = np.where((halodata[i]['Tail'] == halodata[i]['ID'])*(
             halodata[i]['npart'] >= npartlim)*(halodata[i]['Head'] != halodata[i]['ID']))[0]
         nfix['TotalOutliers'][i] = noprog.size
@@ -3890,7 +3895,7 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
         # object a new progenitor
         # instead can see if object's main branch can be reassigned to another halo
         # in order to make main branches smooth
-        if (mergeHalo == -1):
+        if (mergeHalo == -1 and iswaphalosubhaloflag == 1):
             nfix['NoMergeCandiate'][haloSnap] += 1
             branchfixSwapHaloOrSubhalo, branchfixSwapHaloOrSubhaloTail = FixBranchHaloSubhaloSwapBranch(numsnaps, treedata, halodata, numhalos,
                         npartlim, meritlim,
@@ -3963,7 +3968,8 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
             nfix['NoFixMerge'][haloSnap] += 1
         if (branchfixMergeSwapBranch < 0):
             nfix['NoFixMergeBranchSwap'][haloSnap] += 1
-
+        if (branchfixMerge < 0 and branchfixMergeSwapBranch < 0 and iswaphalosubhaloflag == 0):
+            continue
         if (branchfixMerge < 0 and branchfixMergeSwapBranch < 0):
             branchfixSwapHaloOrSubhalo, branchfixSwapHaloOrSubhaloTail = FixBranchHaloSubhaloSwapBranch(numsnaps, treedata, halodata, numhalos,
                         npartlim, meritlim,
@@ -4026,7 +4032,26 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
             else :
                 nfix['NoFixAll'][haloSnap] +=1
                 continue
-    for i in range(numsnaps-1):
+    # if checking tree, make sure root heads and root tails match when head and tails indicate they should
+    if (ichecktree):
+        irebuildrootheadtail = False
+        for i in range(numsnaps):
+            ntailcheck = np.where((halodata[i]['Tail'] == halodata[i]['ID'])*
+                (halodata[i]['RootTail'] != halodata[i]['Tail']))[0].size
+            nheadcheck = np.where((halodata[i]['Head'] == halodata[i]['ID'])*
+                (halodata[i]['RootHead'] != halodata[i]['Head']))[0].size
+            if (ntailcheck > 0):
+                print(i, 'Issue with RootTail! Might need to rebuild Root Tails or check input tree', ntailcheck)
+                irebuildrootheadtail = True
+            if (nheadcheck > 0):
+                print(i, 'Issue with RootHead! Might need to rebuild Root Head or check input tree', nheadcheck)
+                irebuildrootheadtail = True
+        if (irebuildrootheadtail):
+            for i in range(numsnaps):
+                roottails = np.where((halodata[i]['Tail'] == halodata[i]['ID']))
+                # now should I actually go about and set the root tails of stuff?
+
+    for i in range(numsnaps):
         noprog = np.where((halodata[i]['Tail'] == halodata[i]['ID'])*(
             halodata[i]['npart'] >= npartlim)*(halodata[i]['Head'] != halodata[i]['ID']))[0]
         nfix['AfterFixTotalOutliers'][i] = noprog.size
