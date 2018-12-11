@@ -3118,6 +3118,14 @@ def FixBranchMergePhaseSearch(numsnaps, treedata, halodata, numhalos,
         if (halodata[curSnap]['Num_progen'][curHostIndex] > 1 and
             halodata[curSnap]['RootHead'][curHostIndex] == curRootHead):
             haloIDList.append(curHost)
+        subs = np.where((halodata[curSnap]['hostHaloID'] == curHost)*
+                        (halodata[curSnap]['Num_progen'][curHostIndex]>1)*
+                        #(halodata[curSnap]['npart'] >= npartlim)*
+                        (halodata[curSnap]['RootHead'] == curRootHead)
+                        )[0]
+        if (subs.size >0):
+            for isub in halodata[curSnap]['ID'][subs]:
+                haloIDList.append(isub)
     # search backwards in time for any object that might have merged with either object or objects host
     while(curSnap >= searchrange and halodata[curSnap]['Tail'][curIndex] != curHalo):
         curHalo = halodata[curSnap]['Tail'][curIndex]
@@ -3132,10 +3140,20 @@ def FixBranchMergePhaseSearch(numsnaps, treedata, halodata, numhalos,
             if (halodata[curSnap]['Num_progen'][curHostIndex] > 1 and
                 halodata[curSnap]['RootHead'][curHostIndex] == curRootHead):
                 haloIDList.append(curHost)
+            subs = np.where((halodata[curSnap]['hostHaloID'] == curHost)*
+                            (halodata[curSnap]['Num_progen'][curHostIndex]>1)*
+                            #(halodata[curSnap]['npart'] >= npartlim)*
+                            (halodata[curSnap]['RootHead'] == curRootHead)
+                            )[0]
+            if (subs.size >0):
+                for isub in halodata[curSnap]['ID'][subs]:
+                    haloIDList.append(isub)
 
     # with this list of objects, search if any of these objects have
     # secondary progenitors with high Merit_type
     haloIDList = np.unique(np.array(haloIDList, dtype=np.int64))
+    if (iverbose >1):
+        print(haloID, 'initial candidates', haloIDList.size)
     #identify possible secondary progenitors of halos of interest
     mergeCheck = (np.in1d(secondaryProgenList['Descen'], haloIDList) *
             (secondaryProgenList['Merit'] >= meritlim)
@@ -3173,7 +3191,8 @@ def FixBranchMergePhaseSearch(numsnaps, treedata, halodata, numhalos,
         xdiff = np.linalg.norm(xrel)*rnorm
         vdiff = np.linalg.norm(vrel)*vnorm
         npartdiff = (halodata[candidateSnap]['npart'][candidateIndex]) / float(halodata[haloSnap]['npart'][haloIndex])
-
+        if (iverbose > 1):
+            print(period, xrel, 1.0/rnorm, ':', vrel, 1.0/vnorm, ' | ', xdiff,vdiff,npartdiff)
         # object must have vdiff < limit and xdiff less than limit to proceed
         if not (xdiff < xdifflim and vdiff < vdifflim):
             continue
@@ -3539,14 +3558,31 @@ def FixBranchHaloSubhaloSwapBranch(numsnaps, treedata, halodata, numhalos,
         haloHostIndex = np.uint64(haloHost % TEMPORALHALOIDVAL - 1)
         haloHostSnap = haloSnap
         haloHostRootHeadID = halodata[haloSnap]['RootHead'][haloHostIndex]
+
+        #move along host halo line to see if it merges with subhalo line within nsnapsearch
+        curHalo = haloHost
+        curSnap = np.uint64(curHalo / TEMPORALHALOIDVAL)
+        curIndex = np.uint64(curHalo % TEMPORALHALOIDVAL - 1)
+        RootTail = curRootTail = halodata[curSnap]['RootTail'][curIndex]
+        curRootHead = halodata[curSnap]['RootHead'][curIndex]
+        ncount = 0
+        while (curRootTail != haloID and ncount <= nsnapsearch):
+            if (curHalo == curRootHead):
+                break
+            curHalo = halodata[curSnap]['Head'][curIndex]
+            curSnap = np.uint64(curHalo / TEMPORALHALOIDVAL)
+            curIndex = np.uint64(curHalo % TEMPORALHALOIDVAL - 1)
+            curRootTail = halodata[curSnap]['RootTail'][curIndex]
+            
         if (iverbose > 1):
-           print(haloID, 'subhalo has host ', haloHost,
+            print(haloID, 'subhalo has host ', haloHost,
               'that might take over subhalo main branch',
               'npart', halodata[haloSnap]['npart'][haloIndex], halodata[haloSnap]['npart'][haloHostIndex],
               'Stype', halodata[haloSnap]['Structuretype'][haloIndex], halodata[haloSnap]['Structuretype'][haloHostIndex]
               )
+            print('is host merging into sub at some point?',haloID,' halo now at root tail of ',curRootTail,' at snapshot', curSnap)
 
-        if (iverbose > 2):
+        if (iverbose > 1):
             mainbranchlength = sublifelength = 0
             curHalo = haloID
             curSnap = np.uint64(curHalo / TEMPORALHALOIDVAL)
@@ -3563,7 +3599,7 @@ def FixBranchHaloSubhaloSwapBranch(numsnaps, treedata, halodata, numhalos,
                 curIndex = np.uint64(curHalo % TEMPORALHALOIDVAL - 1)
                 curRootTail = halodata[curSnap]['RootTail'][curIndex]
             print(haloID,'meets condition', (haloHostRootHeadID == haloRootHeadID), 'sublife',sublifelength,'mainbranch',mainbranchlength)
-
+        # update to adjust subhalo if halo mergers into subhalo branch
         if (haloHostRootHeadID == haloRootHeadID):
             haloHostHeadRank = treedata[haloSnap]['Rank'][haloHostIndex][0]
             haloHostHead = halodata[haloSnap]['Head'][haloHostIndex]
@@ -3574,6 +3610,7 @@ def FixBranchHaloSubhaloSwapBranch(numsnaps, treedata, halodata, numhalos,
             # have a fix.
             # #todo could add additional checks to see if subhalo becomes a halo later on
             # #todo might want to move foward until host is no longer main branch
+            
             if (haloHostHeadRank > 0 and haloHostHeadRootTail == haloID):
                 branchfixSwapBranch = haloHost
                 branchfixSwapBranchTail = halodata[haloSnap]['Tail'][haloHostIndex]
@@ -3965,6 +4002,7 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
 
     # have object with no progenitor
     for haloID in noprogID:
+        iverbose = 0
         # have object with no progenitor
         haloSnap = np.uint64(haloID/TEMPORALHALOIDVAL)
         haloIndex = np.uint64(haloID % TEMPORALHALOIDVAL-1)
@@ -3974,13 +4012,13 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
         haloHeadIndex = np.uint64(haloHeadID % TEMPORALHALOIDVAL-1)
         mergeHalo = mergeListDict[haloID]
         haloHost = halodata[haloSnap]['hostHaloID'][haloIndex]
+        if (haloID == 92000000009754): iverbose=2
 
         if (haloHost != -1):
             # if object doesn't have a main branch that persists for at least 1 snapshot, skip
             if (mergeHalo == -1 and halodata[haloHeadSnap]['Tail'][haloHeadIndex] != haloID):
                 nfix['Spurious'][haloSnap] += 1
                 continue
-            continue
 
         branchfixMerge = branchfixMergeSwapBranch = -1
         branchfixSwapHaloOrSubhalo = branchfixSwapHaloOrSubhaloTail = -1
