@@ -3309,6 +3309,91 @@ def FixBranchPhaseBranchSwapAdjustTree(numsnaps, treedata, halodata, numhalos,
     """
     Adjust halo merger tree, swapping head tail information for objects found
     by #ref FixBranchMergePhaseSearch
+    Specifically have branch fix halo point to post merge halo
+    and have merge halo point to no progenitor halo
+    """
+
+    if (iverbose > 1):
+        print('Adjusting branch swap merge/fragmentation ',haloID, postmergeHalo, branchfixHalo)
+
+    # store the branch fix points
+    branchfixSnap = np.uint64(branchfixHalo / TEMPORALHALOIDVAL)
+    branchfixIndex = np.uint64(branchfixHalo % TEMPORALHALOIDVAL - 1)
+    branchfixHead = halodata[branchfixSnap]['Head'][branchfixIndex]
+    branchfixHeadSnap = np.uint64(branchfixHead / TEMPORALHALOIDVAL)
+    branchfixHeadIndex = np.uint64(branchfixHead % TEMPORALHALOIDVAL - 1)
+    branchfixRootTail = halodata[branchfixSnap]['RootTail'][branchfixIndex]
+    branchfixHeadTail = halodata[branchfixHeadSnap]['Tail'][branchfixHeadIndex]
+    branchfixHeadTailSnap = np.uint64(branchfixHeadTail / TEMPORALHALOIDVAL)
+    branchfixHeadTailIndex = np.uint64(branchfixHeadTail % TEMPORALHALOIDVAL - 1)
+    branchfixHeadTailRootTail = halodata[branchfixHeadTailSnap]['RootTail'][branchfixHeadTailIndex]
+    branchfixHeadTailRootTailSnap = np.uint64(branchfixHeadTailRootTail / TEMPORALHALOIDVAL)
+    branchfixHeadTailRootTailIndex = np.uint64(branchfixHeadTailRootTail % TEMPORALHALOIDVAL - 1)
+
+    #adjust heads
+    halodata[branchfixSnap]['Head'][branchfixIndex] = postmergeHalo
+    halodata[branchfixSnap]['HeadSnap'][branchfixIndex] = postmergeSnap
+
+    halodata[mergeSnap]['Head'][mergeIndex] = haloID
+    halodata[mergeSnap]['HeadSnap'][mergeIndex] = haloSnap
+
+    #adjust tails
+    halodata[postmergeSnap]['Tail'][postmergeIndex] = branchfixHalo
+    halodata[postmergeSnap]['TailSnap'][postmergeIndex] = branchfixSnap
+
+    halodata[haloSnap]['Tail'][haloIndex] = mergeHalo
+    halodata[haloSnap]['TailSnap'][haloIndex] = mergeSnap
+
+    #adjust root tails
+    curHalo = haloID
+    curSnap = np.uint64(curHalo / TEMPORALHALOIDVAL)
+    curIndex = np.uint64(curHalo % TEMPORALHALOIDVAL - 1)
+    while (True):
+        if (iverbose > 2):
+            print('moving up branch to adjust the root tails', curHalo,
+                  curSnap, halodata[curSnap]['RootTail'][curIndex], branchfixHeadTailRootTail)
+        halodata[curSnap]['RootTail'][curIndex] = branchfixHeadTailRootTail
+        halodata[curSnap]['RootTailSnap'][curIndex] = branchfixHeadTailRootTailSnap
+        # if not on main branch exit
+        if (halodata[np.uint32(halodata[curSnap]['Head'][curIndex]/TEMPORALHALOIDVAL)]['Tail'][np.uint64(halodata[curSnap]['Head'][curIndex] % TEMPORALHALOIDVAL-1)] != curHalo):
+            break
+        # if at root head then exit
+        if (halodata[curSnap]['Head'][curIndex] == curHalo):
+            break
+        curHalo = halodata[curSnap]['Head'][curIndex]
+        curSnap = np.uint64(curHalo / TEMPORALHALOIDVAL)
+        curIndex = np.uint64(curHalo % TEMPORALHALOIDVAL - 1)
+
+    curHalo = postmergeHalo
+    curSnap = np.uint64(curHalo / TEMPORALHALOIDVAL)
+    curIndex = np.uint64(curHalo % TEMPORALHALOIDVAL - 1)
+    while (True):
+        if (iverbose > 2):
+            print('moving up fix branch to adjust the root tails', curHalo, curSnap,
+                  halodata[curSnap]['RootTail'][curIndex], branchfixRootTail)
+        halodata[curSnap]['RootTail'][curIndex] = branchfixRootTail
+        halodata[curSnap]['RootTailSnap'][curIndex] = branchfixRootTailSnap
+        # if not on main branch exit
+        if (halodata[np.uint32(halodata[curSnap]['Head'][curIndex]/TEMPORALHALOIDVAL)]['Tail'][np.uint64(halodata[curSnap]['Head'][curIndex] % TEMPORALHALOIDVAL-1)] != curHalo):
+            break
+        # if at root head then exit
+        if (halodata[curSnap]['Head'][curIndex] == curHalo):
+            break
+        curHalo = halodata[curSnap]['Head'][curIndex]
+        curSnap = np.uint64(curHalo/TEMPORALHALOIDVAL)
+        curIndex = np.uint64(curHalo % TEMPORALHALOIDVAL-1)
+
+def FixBranchPhaseComplexBranchSwapAdjustTree(numsnaps, treedata, halodata, numhalos,
+                            TEMPORALHALOIDVAL, iverbose,
+                            haloID, haloSnap, haloIndex,
+                            mergeHalo, mergeSnap, mergeIndex,
+                            premergeHalo, premergeSnap, premergeIndex,
+                            postmergeHalo,postmergeSnap, postmergeIndex,
+                            branchfixHalo
+                            ):
+    """
+    Adjust halo merger tree, swapping head tail information for objects found
+    by #ref FixBranchMergePhaseSearch
     """
 
     if (iverbose > 1):
