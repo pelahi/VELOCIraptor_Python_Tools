@@ -3591,7 +3591,6 @@ def FixBranchHaloSubhaloSwapBranch(numsnaps, treedata, halodata, numhalos,
             haloHostHeadRootTail == haloID):
             branchfixSwapBranch = haloHost
             branchfixSwapBranchSubhalo = haloID
-            branchfixSwapBranchHaloHead = haloHead
 
             if (iverbose > 1):
                 print('Subhalo swaping descendant line with halo that mergers immediately',  branchfixSwapBranchSubhalo, branchfixSwapBranch)
@@ -3718,6 +3717,8 @@ def FixBranchHaloSubhaloSwapBranch(numsnaps, treedata, halodata, numhalos,
                 if (fixFirstAsSubhalo == -1):
                     branchfixSwapBranchSubhalo = subhaloAsSubhalo
                     branchfixSwapBranch = fixHalo
+                    #store head of subhalo 
+                    branchfixSwapBranchTail = subhaloAsSubhaloHead
                     if (iverbose > 1):
                         print('Subhalo swapping descendant line with halo that has delayed mergers with subhalo main branch',  branchfixSwapBranchSubhalo, branchfixSwapBranch)
                 # if subhalo becomes halo and halo swaps to subhalo then 
@@ -3726,6 +3727,7 @@ def FixBranchHaloSubhaloSwapBranch(numsnaps, treedata, halodata, numhalos,
                     branchfixSwapBranchSubhalo = subhaloAsSubhalo
                     branchfixSwapBranch = fixLastAsHalo
                     branchfixSwapBranchHead = fixFirstAsSubhalo
+                    branchfixSwapBranchTail = subhaloAsSubhaloHead
                     if (iverbose > 1):
                         print('Subhalo swapping descendant line with halo that has delayed mergers with subhalo main branch and swapping with subhalo progenitor',  
                                 branchfixSwapBranchSubhalo, branchfixSwapBranch, branchfixSwapBranchHead)
@@ -3870,70 +3872,94 @@ def FixBranchHaloSubhaloSwapBranchAdjustTree(numsnaps, treedata, halodata, numha
                   'styperoottail', halodata[branchfixRootTailSnap]['Structuretype'][branchfixRootTailIndex],
                   )
 
-
-        # have halo point to subhalo descedant and descendant point to halo
-        halodata[branchfixSnap]['Head'][branchfixIndex] = haloHead
-        halodata[branchfixSnap]['HeadSnap'][branchfixIndex] = haloHeadSnap
-        halodata[haloHeadSnap]['Tail'][haloHeadIndex] = branchfixSwapBranch
-        halodata[haloHeadSnap]['TailSnap'][haloHeadIndex] = branchfixSnap
-        # and alter the main branch line of the subhalo to point to the halo's main branch line's root tail
-        curHalo = haloHead
-        curSnap = np.uint64(curHalo / TEMPORALHALOIDVAL)
-        curIndex = np.uint64(curHalo % TEMPORALHALOIDVAL - 1)
-        # curTail = halodata[curSnap]['Tail'][curIndex]
-        curRootTail = halodata[curSnap]['RootTail'][curIndex]
-        while (curRootTail == haloID):
-            if (iverbose > 1):
-                print('subhalo swap fix, moving up branch to adjust the root tails', curHalo,
-                      curSnap, halodata[curSnap]['RootTail'][curIndex], branchfixRootTail)
-
-            #if (curHalo == 117000000090295):
-            #    print('subhalo swap fix, moving up branch to adjust the root tails', curHalo,
-            #          curSnap, halodata[curSnap]['RootTail'][curIndex], branchfixRootTail)
-            #    print(abababa)
-
-            halodata[curSnap]['RootTail'][curIndex] = branchfixRootTail
-            halodata[curSnap]['RootTailSnap'][curIndex] = branchfixRootTailSnap
-            if (curHalo == haloRootHead):
-                break
-            curHalo = halodata[curSnap]['Head'][curIndex]
+        # need more useful/informative flag but if Tail is -1
+        # then simple immediate halo into subhalo merger, adjust the head using halo head
+        if (branchfixSwapBranchTail == -1):
+            # have halo point to subhalo descedant and descendant point to halo
+            halodata[branchfixSnap]['Head'][branchfixIndex] = haloHead
+            halodata[branchfixSnap]['HeadSnap'][branchfixIndex] = haloHeadSnap
+            halodata[haloHeadSnap]['Tail'][haloHeadIndex] = branchfixSwapBranch
+            halodata[haloHeadSnap]['TailSnap'][haloHeadIndex] = branchfixSnap
+            # and alter the main branch line of the subhalo to point to the halo's main branch line's root tail
+            curHalo = haloHead
             curSnap = np.uint64(curHalo / TEMPORALHALOIDVAL)
             curIndex = np.uint64(curHalo % TEMPORALHALOIDVAL - 1)
+            # curTail = halodata[curSnap]['Tail'][curIndex]
             curRootTail = halodata[curSnap]['RootTail'][curIndex]
-        # and if branch Head indicates trying to match sub to sub, lets adjust that
-        if (branchfixSwapBranchHead > -1):
-            branchfixSwapBranchHeadIndex = np.uint64(branchfixSwapBranchHead % TEMPORALHALOIDVAL-1)
-            branchfixSwapBranchHeadSnap = np.uint64(branchfixSwapBranchHead / TEMPORALHALOIDVAL)
-
-            halodata[branchfixSubhaloSnap]['Head'][branchfixSubhaloIndex] = branchfixSwapBranchHead
-            halodata[branchfixSubhaloSnap]['HeadSnap'][branchfixSubhaloIndex] = branchfixSwapBranchHeadSnap
-            halodata[branchfixSwapBranchHeadSnap]['Tail'][branchfixSwapBranchHeadIndex] = branchfixSwapBranchSubhalo
-            halodata[branchfixSwapBranchHeadSnap]['TailSnap'][branchfixSwapBranchHeadIndex] = branchfixSubhaloSnap
-            #and adjust root tails 
-            curHalo = branchfixSwapBranchHead
-            curSnap = np.uint64(curHalo / TEMPORALHALOIDVAL)
-            curIndex = np.uint64(curHalo % TEMPORALHALOIDVAL - 1)
-            oldRootTail = curRootTail = halodata[curSnap]['RootTail'][curIndex]
-            newRootTail = halodata[branchfixSubhaloSnap]['RootTail'][branchfixSubhaloIndex]
-            newRootTailSnap = np.uint64(curHalo / TEMPORALHALOIDVAL)
-            while (curRootTail == oldRootTail):
+            while (curRootTail == haloID):
                 if (iverbose > 1):
                     print('subhalo swap fix, moving up branch to adjust the root tails', curHalo,
-                          curSnap, halodata[curSnap]['RootTail'][curIndex], newRootTail)
+                          curSnap, halodata[curSnap]['RootTail'][curIndex], branchfixRootTail)
 
-                #if (curHalo == 117000000090295):
-                #    print('subhalo swap fix, moving up branch to adjust the root tails', curHalo,
-                #          curSnap, halodata[curSnap]['RootTail'][curIndex], branchfixRootTail)
-                #    print(abababa)
-
-                halodata[curSnap]['RootTail'][curIndex] = newRootTail
-                halodata[curSnap]['RootTailSnap'][curIndex] = newRootTailSnap
+                halodata[curSnap]['RootTail'][curIndex] = branchfixRootTail
+                halodata[curSnap]['RootTailSnap'][curIndex] = branchfixRootTailSnap
                 if (curHalo == haloRootHead):
                     break
                 curHalo = halodata[curSnap]['Head'][curIndex]
                 curSnap = np.uint64(curHalo / TEMPORALHALOIDVAL)
                 curIndex = np.uint64(curHalo % TEMPORALHALOIDVAL - 1)
                 curRootTail = halodata[curSnap]['RootTail'][curIndex]
+        # otherwise assume that had to move forward in time and need adjust where we change pointers
+        else:
+            newHead = branchfixSwapBranchTail
+            newSnap = np.uint64(newHead / TEMPORALHALOIDVAL)
+            newIndex = np.uint64(newHead % TEMPORALHALOIDVAL - 1)
+            print('trying forward subhalo', branchfixSwapBranch, branchfixSwapBranchSubhalo, branchfixSwapBranchHead, branchfixSwapBranchTail)
+            # need the swap check code to return more stuff I think
+            # have halo point to what should be subhalo first as halo
+            halodata[branchfixSnap]['Head'][branchfixIndex] = newHead
+            halodata[branchfixSnap]['HeadSnap'][branchfixIndex] = newSnap
+            # then have that object point to the halo which should be stored in branchfix
+            halodata[newSnap]['Tail'][newIndex] = branchfixSwapBranch
+            halodata[newSnap]['TailSnap'][newIndex] = branchfixSnap
+            # and alter the main branch line of the subhalo to point to the halo's main branch line's root tail
+            curHalo = newHead
+            curSnap = np.uint64(curHalo / TEMPORALHALOIDVAL)
+            curIndex = np.uint64(curHalo % TEMPORALHALOIDVAL - 1)
+            # curTail = halodata[curSnap]['Tail'][curIndex]
+            curRootTail = halodata[curSnap]['RootTail'][curIndex]
+            while (curRootTail == haloID):
+                if (iverbose > 1):
+                    print('subhalo swap fix, moving up branch to adjust the root tails', curHalo,
+                          curSnap, halodata[curSnap]['RootTail'][curIndex], branchfixRootTail)
+
+                halodata[curSnap]['RootTail'][curIndex] = branchfixRootTail
+                halodata[curSnap]['RootTailSnap'][curIndex] = branchfixRootTailSnap
+                if (curHalo == haloRootHead):
+                    break
+                curHalo = halodata[curSnap]['Head'][curIndex]
+                curSnap = np.uint64(curHalo / TEMPORALHALOIDVAL)
+                curIndex = np.uint64(curHalo % TEMPORALHALOIDVAL - 1)
+                curRootTail = halodata[curSnap]['RootTail'][curIndex]
+                
+            # and if branch Head indicates trying to match sub to sub, lets adjust that
+            if (branchfixSwapBranchHead > -1):
+                branchfixSwapBranchHeadIndex = np.uint64(branchfixSwapBranchHead % TEMPORALHALOIDVAL-1)
+                branchfixSwapBranchHeadSnap = np.uint64(branchfixSwapBranchHead / TEMPORALHALOIDVAL)
+
+                halodata[branchfixSubhaloSnap]['Head'][branchfixSubhaloIndex] = branchfixSwapBranchHead
+                halodata[branchfixSubhaloSnap]['HeadSnap'][branchfixSubhaloIndex] = branchfixSwapBranchHeadSnap
+                halodata[branchfixSwapBranchHeadSnap]['Tail'][branchfixSwapBranchHeadIndex] = branchfixSwapBranchSubhalo
+                halodata[branchfixSwapBranchHeadSnap]['TailSnap'][branchfixSwapBranchHeadIndex] = branchfixSubhaloSnap
+                #and adjust root tails 
+                curHalo = branchfixSwapBranchHead
+                curSnap = np.uint64(curHalo / TEMPORALHALOIDVAL)
+                curIndex = np.uint64(curHalo % TEMPORALHALOIDVAL - 1)
+                oldRootTail = curRootTail = halodata[curSnap]['RootTail'][curIndex]
+                newRootTail = halodata[branchfixSubhaloSnap]['RootTail'][branchfixSubhaloIndex]
+                newRootTailSnap = np.uint64(curHalo / TEMPORALHALOIDVAL)
+                while (curRootTail == oldRootTail):
+                    if (iverbose > 1):
+                        print('subhalo swap fix, moving up branch to adjust the root tails', curHalo,
+                              curSnap, halodata[curSnap]['RootTail'][curIndex], newRootTail)
+                    halodata[curSnap]['RootTail'][curIndex] = newRootTail
+                    halodata[curSnap]['RootTailSnap'][curIndex] = newRootTailSnap
+                    if (curHalo == haloRootHead):
+                        break
+                    curHalo = halodata[curSnap]['Head'][curIndex]
+                    curSnap = np.uint64(curHalo / TEMPORALHALOIDVAL)
+                    curIndex = np.uint64(curHalo % TEMPORALHALOIDVAL - 1)
+                    curRootTail = halodata[curSnap]['RootTail'][curIndex]
 
 def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numhalos,
                                              npartlim=200, meritlim=0.025, xdifflim=2.0, vdifflim=1.0, nsnapsearch=4,
