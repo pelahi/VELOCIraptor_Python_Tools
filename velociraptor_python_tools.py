@@ -3597,30 +3597,7 @@ def FixBranchHaloSubhaloSwapBranch(numsnaps, treedata, halodata, numhalos,
         #if halo does not immediately merge then continue search
         elif (haloHostHeadRootTail != haloID and haloHostRootHeadID == haloRootHeadID):
             iverbose = 2
-            """
-            # move along host halo line to see if it merges with subhalo line within nsnapsearch
-            # and store point at which host was last a halo
-            curHalo = haloHost
-            curSnap = np.uint64(curHalo / TEMPORALHALOIDVAL)
-            curIndex = np.uint64(curHalo % TEMPORALHALOIDVAL - 1)
-            curRootTail = halodata[curSnap]['RootTail'][curIndex]
-            curRootHead = halodata[curSnap]['RootHead'][curIndex]
-            haloHostRootTail = halodata[curSnap]['RootTail'][curIndex]
-            haloHostasHalo = curHalo 
-            # find if object mergers with subhalo main branch in some time
-            ncount = 0
-            while (curRootTail != haloID and ncount < nsnapsearch):
-                ncount += 1
-                if (curHalo == curRootHead):
-                    break
-                curHalo = halodata[curSnap]['Head'][curIndex]
-                curSnap = np.uint64(curHalo / TEMPORALHALOIDVAL)
-                curIndex = np.uint64(curHalo % TEMPORALHALOIDVAL - 1)
-                curRootTail = halodata[curSnap]['RootTail'][curIndex]
-            if (curRootTail == haloID):
-                # have merged, find first instance where subhalo main branch is a halo
-                # ???
-            """ 
+
             # move along host halo line to see if it merges with subhalo line within nsnapsearch
             # and store point at which host was last a halo
             curHalo = haloHost
@@ -3713,6 +3690,7 @@ def FixBranchHaloSubhaloSwapBranch(numsnaps, treedata, halodata, numhalos,
                         'and subhalo last not a host halo at', subhaloAsSubhalo,
                         'and did it become halo before current host merged? subhaloAsHalo', subhaloAsHalo,
                     )
+
                 # see if host halo ever became a subhalo before it merged. 
                 if (fixFirstAsSubhalo == -1):
                     branchfixSwapBranchSubhalo = subhaloAsSubhalo
@@ -3724,13 +3702,16 @@ def FixBranchHaloSubhaloSwapBranch(numsnaps, treedata, halodata, numhalos,
                 # if subhalo becomes halo and halo swaps to subhalo then 
                 # adjust line to swap branchs so halo -> halo, subhalo -> subhalo 
                 elif (fixRootTail == haloID and subhaloAsHalo != -1 and fixFirstAsSubhalo != -1):
-                    branchfixSwapBranchSubhalo = subhaloAsSubhalo
-                    branchfixSwapBranch = fixLastAsHalo
-                    branchfixSwapBranchHead = fixFirstAsSubhalo
-                    branchfixSwapBranchTail = subhaloAsSubhaloHead
-                    if (iverbose > 1):
-                        print('Subhalo swapping descendant line with halo that has delayed mergers with subhalo main branch and swapping with subhalo progenitor',  
-                                branchfixSwapBranchSubhalo, branchfixSwapBranch, branchfixSwapBranchHead)
+                    fixLastAsHaloSnap = np.uint64(fixLastAsHalo / TEMPORALHALOIDVAL)
+                    subhaloAsHaloSnap = np.uint64(subhaloAsHalo / TEMPORALHALOIDVAL)
+                    if (subhaloAsHaloSnap > fixLastAsHaloSnap):
+                        branchfixSwapBranchSubhalo = subhaloAsSubhalo
+                        branchfixSwapBranch = fixLastAsHalo
+                        branchfixSwapBranchHead = fixFirstAsSubhalo
+                        branchfixSwapBranchTail = subhaloAsSubhaloHead
+                        if (iverbose > 1):
+                            print('Subhalo swapping descendant line with halo that has delayed mergers with subhalo main branch and swapping with subhalo progenitor',  
+                                    branchfixSwapBranchSubhalo, branchfixSwapBranch, branchfixSwapBranchHead)
         else :
             branchfixSwapBranch = -2
             if (iverbose > 1):
