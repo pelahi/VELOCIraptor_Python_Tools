@@ -3,6 +3,7 @@ from __future__ import print_function
 
 import sys
 import os
+import struct
 import os.path
 import string
 import time
@@ -21,7 +22,7 @@ import scipy.interpolate as scipyinterp
 import scipy.spatial as spatial
 import multiprocessing as mp
 from collections import deque
-
+import pandas as pd
 #import cython
 #from cython.parallel import prange, parallel
 
@@ -134,7 +135,7 @@ def ReadPropertyFile(basefilename, ibinary=0, iseparatesubfiles=0, iverbose=0, d
         byteoffset = np.dtype(np.int32).itemsize*3 + \
             np.dtype(np.uint64).itemsize*2+4*headersize
         for i in range(headersize):
-            fieldnames.append(unpack('s', halofile.read(CHARSIZE)).strip())
+            fieldnames.append(struct.unpack('s', halofile.read(CHARSIZE)).strip())
         for i in np.arange(fieldnames.__len__()):
             fieldname = fieldnames[i]
             if fieldname in ["ID", "numSubStruct", "npart", "n_gas", "n_star", "Structuretype"]:
@@ -470,6 +471,8 @@ class MinStorageList():
             return np.array([])
         else :
             return self.Data[self.Offset[index]:self.Offset[index]+self.Num[index]]
+    def GetBestRanks(self, ):
+        return np.array(self.Data[self.Offset],copy=True)
 
 
 def ReadHaloMergerTreeDescendant(treefilename, ireverseorder=False, ibinary=0,
@@ -589,18 +592,18 @@ def ReadHaloMergerTreeDescendant(treefilename, ireverseorder=False, ibinary=0,
                             tree[ii]["Npart_descen"][j][k] = np.uint32(data[3])
 
                 if (ireducedtobestranks):
-                    halolist=np.where(tree[snap]["Num_descen"]>1)[0]
+                    halolist=np.where(tree[ii]["Num_descen"]>1)[0]
                     for ihalo in halolist:
                         numdescen = 1
                         if (imerit):
-                            numdescen = np.int32(np.max([1,np.argmax(tree[snap]["Merit"][ihalo]<meritlimit)]))
-                        tree[snap]["Num_descen"][ihalo] = numdescen
-                        tree[snap]["Descen"][ihalo] = np.array([tree[snap]["Descen"][ihalo][:numdescen]])
-                        tree[snap]["Rank"][ihalo] = np.array([tree[snap]["Rank"][ihalo][:numdescen]])
+                            numdescen = np.int32(np.max([1,np.argmax(tree[ii]["Merit"][ihalo]<meritlimit)]))
+                        tree[ii]["Num_descen"][ihalo] = numdescen
+                        tree[ii]["Descen"][ihalo] = np.array([tree[ii]["Descen"][ihalo][:numdescen]])
+                        tree[ii]["Rank"][ihalo] = np.array([tree[ii]["Rank"][ihalo][:numdescen]])
                         if (imerit):
-                            tree[snap]["Merit"][ihalo] = np.array([tree[snap]["Merit"][ihalo][:numdescen]])
+                            tree[ii]["Merit"][ihalo] = np.array([tree[ii]["Merit"][ihalo][:numdescen]])
                         if (inpart):
-                            tree[snap]["Npart_descen"][ihalo] = np.array([tree[snap]["Npart_descen"][ihalo][:numdescen]])
+                            tree[ii]["Npart_descen"][ihalo] = np.array([tree[ii]["Npart_descen"][ihalo][:numdescen]])
     # hdf format
     elif(ibinary == 2):
 
@@ -797,6 +800,8 @@ def ReadCrossCatalogList(fname, meritlim=0.1, iverbose=0):
     Reads a cross catalog produced by halomergertree,
     also allows trimming of cross catalog using a higher merit threshold than one used to produce catalog
     """
+    return []
+    """
     start = time.clock()
     if (iverbose):
         print("reading cross catalog")
@@ -823,6 +828,7 @@ def ReadCrossCatalogList(fname, meritlim=0.1, iverbose=0):
     if (iverbose):
         print("done reading cross catalog ", time.clock()-start)
     return pdata
+    """
 
 
 def ReadSimInfo(basefilename):
@@ -1155,7 +1161,7 @@ def ReadSOParticleDataFile(basefilename, ibinary=0, iverbose=0, binarydtype=np.i
             numparts = np.uint64(numSO)
             gfile.close()
             # load data
-            gdata = np.loadtxt(gfilename, skiprows=2, dtype=np.uint64)
+            gdata = np.loadtxt(filename, skiprows=2, dtype=np.uint64)
             numingroup = gdata[:numSO]
             offset = gdata[np.int64(numSO):np.int64(2*numSO)]
             piddata = gdata[np.int64(2*numSO):np.int64(2*numSO+numparts)]
@@ -1364,7 +1370,7 @@ def BuildTemporalHeadTail(numsnaps, tree, numhalos, halodata, TEMPORALHALOIDVAL=
         # if the number of halos is large then run in parallel
         if (numhalos[istart] > 2*chunksize and iparallel == 1):
             # determine maximum number of threads
-            nthreads = int(min(mp.cpu_count(), ceil(
+            nthreads = int(min(mp.cpu_count(), np.ceil(
                 numhalos[istart]/float(chunksize))))
             nchunks = int(
                 np.ceil(numhalos[istart]/float(chunksize)/float(nthreads)))
@@ -1378,7 +1384,7 @@ def BuildTemporalHeadTail(numsnaps, tree, numhalos, halodata, TEMPORALHALOIDVAL=
                 # if last chunk then must adjust nthreads
                 if (j == nchunks-1):
                     nthreads = int(
-                        ceil((numhalos[istart]-offset)/float(chunksize)))
+                        np.ceil((numhalos[istart]-offset)/float(chunksize)))
 
                 halochunk = [range(offset+k*chunksize, offset+(k+1)*chunksize)
                              for k in range(nthreads)]
@@ -1565,6 +1571,8 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
     TEMPORALHALOIDVAL is used to parse the halo ids and determine the step size between descendant and progenitor
     """
     print("Building Temporal catalog with head and tails using a descendant tree")
+    #store if merit present in the raw tree
+    imerit=('Merit' in tree[0].keys())
     for k in range(numsnaps):
         halodata[k]['Head'] = np.zeros(numhalos[k], dtype=np.int64)
         halodata[k]['Tail'] = np.zeros(numhalos[k], dtype=np.int64)
@@ -1590,128 +1598,175 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
     iparallel = -1
 
     totstart = time.clock()
+    start0=time.clock()
 
     if (ireverseorder):
         snaplist = range(numsnaps-1, -1, -1)
     else:
         snaplist = range(numsnaps)
-
-    if (iparallel == 1):
-        # need to copy halodata as this will be altered
-        if (iverbose > 0):
-            print("copying halo")
-        start = time.clock()
-        mphalodata = manager.list([manager.dict(halodata[k])
-                                   for k in range(numsnaps)])
-        if (iverbose > 0):
-            print("done", time.clock()-start)
-
     for istart in snaplist:
+        start2=time.clock()
         if (iverbose > 0):
-            print("Starting from halos at ", istart, "with", numhalos[istart])
-        if (numhalos[istart] == 0):
+            print('starting head/tail at snapshot ', istart, ' containing ', numhalos[istart], 'halos')
+        if (numhalos[istart] == 0): continue
+        #set tails and root tails if necessary
+        wdata = np.where(halodata[istart]['Tail'] == 0)[0]
+        numareroottails = wdata.size
+        if (iverbose > 0):
+            print(numareroottails,' halos are root tails ')
+        if (numareroottails > 0):
+            halodata[istart]['Tail'][wdata] = np.array(halodata[istart]['ID'][wdata],copy=True)
+            halodata[istart]['RootTail'][wdata] = np.array(halodata[istart]['ID'][wdata],copy=True)
+            halodata[istart]['TailSnap'][wdata] = istart*np.ones(wdata.size, dtype=np.int32)
+            halodata[istart]['RootTailSnap'][wdata] = istart*np.ones(wdata.size, dtype=np.int32)
+        #init heads to ids
+        halodata[istart]['Head'] = np.array(halodata[istart]['ID'],copy=True)
+        halodata[istart]['HeadSnap'] = istart*np.ones(numhalos[istart])
+        #find all halos that have descendants and set there heads
+        if (istart == numsnaps-1):
+            halodata[istart]['RootHead'] = np.array(halodata[istart]['ID'],copy=True)
+            halodata[istart]['RootHeadSnap'] = istart*np.ones(numhalos[istart], dtype=np.int32)
             continue
-        # if the number of halos is large then run in parallel
-        if (numhalos[istart] > 2*chunksize and iparallel == 1):
-            # determine maximum number of threads
-            nthreads = int(min(mp.cpu_count(), ceil(
-                numhalos[istart]/float(chunksize))))
-            nchunks = int(
-                np.ceil(numhalos[istart]/float(chunksize)/float(nthreads)))
-            if (iverbose > 0):
-                print("Using", nthreads, "threads to parse ",
-                      numhalos[istart], " halos in ", nchunks, "chunks, each of size", chunksize)
-            # now for each chunk run a set of proceses
-            for j in range(nchunks):
-                start = time.clock()
-                offset = j*nthreads*chunksize
-                # if last chunk then must adjust nthreads
-                if (j == nchunks-1):
-                    nthreads = int(
-                        ceil((numhalos[istart]-offset)/float(chunksize)))
-
-                halochunk = [range(offset+k*chunksize, offset+(k+1)*chunksize)
-                             for k in range(nthreads)]
-                # adjust last chunk
-                if (j == nchunks-1):
-                    halochunk[-1] = range(offset+(nthreads-1)
-                                          * chunksize, numhalos[istart])
-                # when calling a process pass not just a work queue but the pointers to where data should be stored
-                processes = [mp.Process(target=TraceMainDescendantParallelChunk, args=(
-                    istart, halochunk[k], numsnaps, numhalos, mphalodata, tree, TEMPORALHALOIDVAL, ireverseorder)) for k in range(nthreads)]
-                count = 0
-                for p in processes:
-                    print(count+offset, k,
-                          min(halochunk[count]), max(halochunk[count]))
-                    p.start()
-                    count += 1
-                for p in processes:
-                    # join thread and see if still active
-                    p.join()
-                if (iverbose > 1):
-                    print((offset+j*nthreads*chunksize) /
-                          float(numhalos[istart]), " done in", time.clock()-start)
-        # otherwise just single
-        else:
-            # if first time entering non parallel section copy data back from parallel manager based structure to original data structure
-            # as parallel structures have been updated
-            if (iparallel == 1):
-                #tree = [dict(mptree[k]) for k in range(numsnaps)]
-                halodata = [dict(mphalodata[k]) for k in range(numsnaps)]
-                # set the iparallel flag to 0 so that all subsequent snapshots (which should have fewer objects) not run in parallel
-                # this is principly to minimize the amount of copying between manager based parallel structures and the halo/tree catalogs
-                iparallel = 0
-            start = time.clock()
-            chunksize = max(int(0.10*numhalos[istart]), 10)
-            for j in range(numhalos[istart]):
-                # start at this snapshot
-                #start = time.clock()
-                TraceMainDescendant(istart, j, numsnaps, numhalos,
-                                    halodata, tree, TEMPORALHALOIDVAL, ireverseorder)
-                if (j % chunksize == 0 and j > 0):
-                    if (iverbose > 1):
-                        print(
-                            "done", j/float(numhalos[istart]), "in", time.clock()-start)
-                    start = time.clock()
+        wdata = None
+        descencheck=(tree[istart]['Num_descen']>0)
+        wdata=np.where(descencheck)[0]
+        numwithdescen = wdata.size
+        if (iverbose > 0):
+            print(numwithdescen, 'have descendants')
+        if (numwithdescen>0):
+            # should figure out how to best speed this up
+            ranks = np.array([tree[istart]['Rank'][index][0] for index in wdata], dtype=np.int32)
+            descenids = np.array([tree[istart]['Descen'][index][0] for index in wdata], dtype=np.int64)
+            descenindex = np.array(descenids % TEMPORALHALOIDVAL - 1, dtype=np.int64)
+            if (imerit):
+                activemerits = np.array([tree[istart]['Merit'][index][0] for index in wdata], dtype=np.int64)
+            # rest is quick
+            descensnaps = np.array((descenids - descenindex - np.int64(1)) / TEMPORALHALOIDVAL, dtype=np.int32)
+            if (ireverseorder):
+                descensnaps = numsnaps - 1 - descensnaps
+            halodata[istart]['HeadRank'][wdata] = np.array(ranks, copy=True)
+            halodata[istart]['Head'][wdata] = np.array(descenids, copy=True)
+            halodata[istart]['HeadSnap'][wdata] = np.array(descensnaps, copy=True)
+            # showld figure out how to speed this up
+            for i in range(numwithdescen):
+                isnap, idescenindex = descensnaps[i], descenindex[i]
+                halodata[isnap]['Num_progen'][idescenindex] += 1
+            # set the tails of all these objects and their root tails as well
+            wdata2 = np.where(ranks == 0)[0]
+            numactive = wdata2.size
+            if (numactive>0):
+                activetails = wdata[wdata2]
+                descensnaps = descensnaps[wdata2]
+                descenindex = descenindex[wdata2]
+                if (imerit):
+                    activemerits = activemerits[wdata2]
+                # should parallelise this
+                for i in range(numactive):
+                    index, isnap, idescenindex = activetails[i], descensnaps[i], descenindex[i]
+                    #add check to see if this root head has already been assigned, then may have an error in the
+                    #the mpi mesh point
+                    if (halodata[isnap]['Tail'][idescenindex] == 0):
+                        halodata[isnap]['Tail'][idescenindex] = halodata[istart]['ID'][index]
+                        halodata[isnap]['RootTail'][idescenindex] = halodata[istart]['RootTail'][index]
+                        halodata[isnap]['TailSnap'][idescenindex] = istart
+                        halodata[isnap]['RootTailSnap'][idescenindex] = halodata[istart]['RootTailSnap'][index]
+                    #if tail was assigned then need to compare merits and designed which one to use
+                    else:
+                        #if can compare merits
+                        if (imerit):
+                            curMerit = activemerits[i]
+                            prevTailIndex = np.int64(halodata[isnap]['Tail'][idescenindex] % TEMPORALHALOIDVAL - 1)
+                            prevTailSnap = halodata[isnap]['TailSnap'][idescenindex]
+                            compMerit = tree[prevTailSnap]['Merit'][prevTailIndex][0]
+                            if (curMerit > compMerit):
+                                halodata[prevTailSnap]['HeadRank'][prevTailIndex]+=1
+                                halodata[isnap]['Tail'][idescenindex] = halodata[istart]['ID'][index]
+                                halodata[isnap]['RootTail'][idescenindex] = halodata[istart]['RootTail'][index]
+                                halodata[isnap]['TailSnap'][idescenindex] = istart
+                                halodata[isnap]['RootTailSnap'][idescenindex] = halodata[istart]['RootTailSnap'][index]
+                            else:
+                                halodata[istart]['HeadRank'][index]=1
+                        #if merits not present then assume first connection found is better
+                        else:
+                            halodata[istart]['HeadRank'][index]=1
+            wdata2 = None
+            descenids = None
+            descensnaps = None
+            descenindex = None
+        #set root heads of things that have no descendants
+        wdata = np.where(descencheck == False)[0]
+        if (wdata.size > 0):
+            halodata[istart]['RootHead'][wdata] = np.array(halodata[istart]['ID'][wdata], copy=True)
+            halodata[istart]['RootHeadSnap'][wdata] = istart*np.ones(wdata.size, dtype=np.int32)
+        wdata = None
+        descencheck = None
+        if (iverbose > 0):
+            print('finished in', time.clock()-start2)
     if (iverbose > 0):
-        print("done with first bit, setting the main branches walking forward in time")
+        print("done with first bit, setting the main branches walking backward",time.clock()-start0)
     # now have walked all the main branches and set the root tail, head and tail values
     # in case halo data is with late times at beginning need to process items in reverse
     if (ireverseorder):
         snaplist = range(numsnaps)
     else:
         snaplist = range(numsnaps-1, -1, -1)
-
+    # first set root heads of main branches
     for istart in snaplist:
+        if (numhalos[istart] == 0):
+            continue
+        wdata = np.where((halodata[istart]['RootHead'] != 0))[0]
+        numactive=wdata.size
+        if (iverbose > 0):
+            print('Setting root heads at ', istart, 'halos', numhalos[istart], 'active', numactive)
+        if (numactive == 0):
+            continue
+
+        haloidarray = halodata[istart]['Tail'][wdata]
+        haloindexarray = np.array(haloidarray % TEMPORALHALOIDVAL -1, dtype=np.int64)
+        halosnaparray = np.array((haloidarray - haloindexarray - np.int64(1)) / TEMPORALHALOIDVAL, dtype=np.int32)
+
+        if (ireverseorder):
+            halosnaparray = numsnaps - 1 - halosnaparray
+        # go to root tails and walk the main branch
+        for i in np.arange(numactive,dtype=np.int64):
+            halodata[halosnaparray[i]]['RootHead'][haloindexarray[i]]=halodata[istart]['RootHead'][wdata[i]]
+            halodata[halosnaparray[i]]['RootHeadSnap'][haloindexarray[i]]=halodata[istart]['RootHeadSnap'][wdata[i]]
+        wdata = None
+        haloidarray = None
+        haloindexarray = None
+        halosnaparray = None
+    # now go back and find all secondary progenitors and set their root heads
+    for istart in snaplist:
+        if (numhalos[istart] == 0):
+            continue
         # identify all haloes which are not primary progenitors of their descendants, having a descendant rank >0
-        wdata = np.where(halodata[istart]['HeadRank'] > 0)
+        wdata = np.where(halodata[istart]['HeadRank'] > 0)[0]
+        numactive = wdata.size
+        if (iverbose > 0):
+            print('Setting sub branch root heads at ', istart, 'halos', numhalos[istart], 'active', numactive)
+        if (numactive == 0):
+            continue
         # sort this list based on descendant ranking
         sortedranking = np.argsort(halodata[istart]['HeadRank'][wdata])
-        nrankedhalos = len(wdata[0])
-        rankedhalos = halodata[istart]['ID'][wdata[0][sortedranking]]
+        rankedhalos = halodata[istart]['ID'][wdata[sortedranking]]
+        rankedhaloindex = np.array(rankedhalos % TEMPORALHALOIDVAL - 1, dtype=np.int64)
+        wdata = None
+        maindescen = np.array([tree[istart]['Descen'][index][0] for index in rankedhaloindex], dtype=np.int64)
+        maindescenindex = np.array(maindescen % TEMPORALHALOIDVAL - 1, dtype=np.int64)
+        maindescensnap = np.array((maindescen - maindescenindex - np.int64(1)) / TEMPORALHALOIDVAL, dtype=np.int32)
+        if (ireverseorder):
+            maindescensnap = numsnaps - 1 - maindescensnap
         # for each of these haloes, set the head and use the root head information and root snap and set all the information
         # long its branch
-        for ihalo in rankedhalos:
-            haloid = ihalo
-            haloindex = int(haloid % TEMPORALHALOIDVAL)-1
-            halosnap = istart
-            # now set the head of these objects
-            maindescen = tree[halosnap]['Descen'][haloindex][0]
-            maindescenindex = int(maindescen % TEMPORALHALOIDVAL)-1
-            if (ireverseorder):
-                maindescensnap = numsnaps-1 - \
-                    int((maindescen-maindescen %
-                         TEMPORALHALOIDVAL)/TEMPORALHALOIDVAL)
-            else:
-                maindescensnap = int(
-                    (maindescen-maindescen % TEMPORALHALOIDVAL)/TEMPORALHALOIDVAL)
-            # increase the number of progenitors of this descendant
-            halodata[halosnap]['Head'][haloindex] = maindescen
-            halodata[halosnap]['HeadSnap'][haloindex] = maindescensnap
-            halodata[maindescensnap]['Num_progen'][maindescenindex] += 1
+        for i in range(numactive):
             # store the root head
-            roothead = halodata[maindescensnap]['RootHead'][maindescenindex]
-            rootsnap = halodata[maindescensnap]['RootHeadSnap'][maindescenindex]
+            # now set the head of these objects
+            halosnap = istart
+            haloid = rankedhalos[i]
+            haloindex = rankedhaloindex[i]
+            # increase the number of progenitors of this descendant
+            roothead = halodata[maindescensnap[i]]['RootHead'][maindescenindex[i]]
+            rootsnap = halodata[maindescensnap[i]]['RootHeadSnap'][maindescenindex[i]]
             # now set the root head for all the progenitors of this object
             while (True):
                 halodata[halosnap]['RootHead'][haloindex] = roothead
@@ -1720,7 +1775,13 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
                     break
                 haloid = halodata[halosnap]['Tail'][haloindex]
                 halosnap = halodata[halosnap]['TailSnap'][haloindex]
-                haloindex = int(haloid % TEMPORALHALOIDVAL)-1
+                haloindex = np.int64(haloid % TEMPORALHALOIDVAL - 1)
+        rankedhalos = None
+        rankedhaloindex = None
+        maindescen = None
+        maindescenindex = None
+        maindescensnaporder = None
+
     print("Done building", time.clock()-totstart)
 
 
@@ -2026,11 +2087,15 @@ def GenerateSubhaloLinks(numsnaps, numhalos, halodata, TEMPORALHALOIDVAL=1000000
                 p.join()
             if (iverbose):
                 print("Done snaps", j, "to", j+nthreads, time.clock()-start2)
+                sys.stdout.flush()
+
         else:
             generate_sublinks(numhalos[j], halodata[j], iverbose)
             if (iverbose):
                 print("Done snap", j, time.clock()-start2)
+                sys.stdout.flush()
     print("Done subhalolinks ", time.clock()-start)
+    sys.stdout.flush()
 
 
 def GenerateProgenitorLinks(numsnaps, numhalos, halodata, ireversesnaporder=False,
@@ -2128,11 +2193,14 @@ def GenerateProgenitorLinks(numsnaps, numhalos, halodata, ireversesnaporder=Fals
         halodata[snap]['RightTail'][index] = halodata[snap]['ID'][index]
         if (iverbose):
             print("Done snap", j, time.clock()-start2)
+            sys.stdout.flush()
     print("Done progenitor links ", time.clock()-start)
+    sys.stdout.flush()
 
 
 def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
-                   ireversesnaporder=False, TEMPORALHALOIDVAL=1000000000000, iverbose=1,
+                   ireversesnaporder=False, TEMPORALHALOIDVAL=1000000000000, iverbose=2,
+                   icheckforest=False,
                    interactiontime=2, ispatialintflag=False, pos_tree=[], cosmo=dict()):
     """
     This code traces all root heads back in time identifying all interacting haloes and bundles them together into the same forest id
@@ -2160,6 +2228,8 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
         Allows one to quickly parse a Halo ID to determine the snapshot it exists at and its index.
     iverbose : int
         verbosity of function (0, minimal, 1, verbose, 2 chatterbox)
+    icheckforest : bool
+        run final check on forest 
     interactiontime : int
         Optional functionality not implemented yet. Allows forest to be split if connections do not span
         more than this number of snapshots
@@ -2218,42 +2288,36 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
     # first pass assigning forests based on FOF and subs
     offset = 0
     start2 = time.clock()
-    print('starting first pass in producing forest ids')
+    print('starting first pass in producing forest ids using', nsnapsearch,
+          'snapshots being serached and', TEMPORALHALOIDVAL, 'defining temporal id')
+    sys.stdout.flush()
     for j in snaplist:
         if (numhalos[j] == 0):
             continue
         hosts = np.where(halodata[j]['hostHaloID'] == -1)
         halodata[j]['ForestID'][hosts] = halodata[j]['ID'][hosts]
-        subs = np.where(halodata[j]['hostHaloID'] != -1)
-        if (len(subs[0]) == 0):
+        subs = np.where(halodata[j]['hostHaloID'] != -1)[0]
+        if (subs.size == 0):
             continue
         halodata[j]['ForestID'][subs] = halodata[j]['hostHaloID'][subs]
+
     # get initial size of each forest where forests are grouped by halo+subhalo relation
     ForestIDs, ForestSize = np.unique(np.concatenate(
         [halodata[i]['ForestID'] for i in range(numsnaps)]), return_counts=True)
     numforests = len(ForestIDs)
-    ForestSizeStats = dict(zip(ForestIDs, ForestSize))
-    # free memory
-    ForestIDs = ForestSize = []
-    #ForestSizeStats['Snapshots'] = [[] for i in range(numsnaps)]
-    # for i in snaplist:
-    #    if (numhalos[i] ==  0): continue
-    #    ForestSizeStats['Snapshots'][i] = np.zeros(numforests, dtype = np.int64)
-    #    activeforest, counts = np.unique(halodata[i]['ForestID'], return_counts = True)
-    #    ForestSizeStats['Snapshots'][i][np.where(np.in1d(ForestIDs, activeforest))] = counts
+    maxforest = np.max(ForestSize)
     print('finished first pass', time.clock()-start2,
-          'have ', numforests, 'initial forests')
-    print(np.sum(ForestSize), np.max(ForestSize))
+          'have ', numforests, 'initial forests',
+          'with largest forest containing ', maxforest, '(sub)halos')
+    sys.stdout.flush()
 
-    # now move foward in time looking at descendants of host halos to merge forest ids
-    """
-    trying to figure out the best way of minimizing np.where at a given snapshot. My idea was to generate a dictionary of current forests and their sizes
-    that way can just check if dictionary has value > 1. If so, then need to run an np.where, just access the halo's forest id directly
-    To that end I produced a activeforest using unique and return counts and for the current descendant list being examined a similar descenforest
-    I then update the number as necessary. However, for reasons I can't see just yet, the counts are not correct once forest ids have been updated
-    I get odd count errors. The easiest way to pick them up is delete the forest id entry if it has been changed. I then get errors accessing the forest.
+    #ForestSizeStats = dict(zip(ForestIDs, ForestSize))
+    #store the a map of forest ids that will updated
+    ForestMap = dict(zip(ForestIDs, ForestIDs))
+    # free memory
+    ForestIDs = ForestSize = None
 
-    """
+    # now proceed to find new mappings
     start1 = time.clock()
     numloops = 0
     while (True):
@@ -2261,19 +2325,15 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
         start2 = time.clock()
         if (iverbose):
             print('walking forward in time looking at descendants')
+            sys.stdout.flush()
         if (ireversesnaporder):
             snaplist = np.arange(0, numsnaps-1, dtype=np.int32)[::-1]
         else:
             snaplist = np.arange(numsnaps-1, 0, -1)[::-1]
         for j in snaplist:
-            if (iverbose > 1):
-                print("starting snapshot %d containing %d " % (j, numhalos[j]))
             if (numhalos[j] == 0):
                 continue
             start3 = time.clock()
-            # get list of forest ids and the size of the forest at the snapshot
-            #activeforestids, activeforestsize = np.unique(halodata[j]['ForestID'], return_counts = True)
-            #activeforest = dict(zip(activeforestids, activeforestsize))
             if (ireversesnaporder):
                 endsnapsearch = max(0, j-nsnapsearch-1)
                 snaplist2 = np.arange(j-1, endsnapsearch, -1, dtype=np.int32)
@@ -2284,7 +2344,7 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
             for k in snaplist2:
                 if (numhalos[k] == 0):
                     continue
-                descens = []
+                descens = None
                 # find all descendants of currently active halos by finding those whose tails point to snapshot of the descendant list
                 descens = np.where(
                     np.int32(halodata[k]['Tail']/TEMPORALHALOIDVAL) == j)[0]
@@ -2297,109 +2357,55 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
                     if (len(wdata[0]) == 0):
                         continue
                     descens = descens[wdata]
-                    wdata = []
-                # generate descendant forest dictionary containing sizes
-                #descenforestids, descenforestsize = np.unique(halodata[k]['ForestID'][descens], return_counts = True)
-                #descenforest = dict(zip(descenforestids, descenforestsize))
-                # debugging dictionary
-                #touchdescenforest = dict(zip(descenforestids, np.zeros(len(descenforestids))))
-                for idescen in descens:
-                    itail = np.int64(
-                        halodata[k]['Tail'][idescen] % TEMPORALHALOIDVAL-1)
+                    wdata = None
+
+                # process snap to update forest id map
+                tailindexarray = np.array((halodata[k]['Tail'][descens] % TEMPORALHALOIDVAL-1), dtype=np.int64,copy=True)
+                for icount in range(descens.size):
+                    idescen = descens[icount]
+                    itail = tailindexarray[icount]
                     curforest = halodata[k]['ForestID'][idescen]
                     refforest = halodata[j]['ForestID'][itail]
-
                     # it is possible that after updating can have the descedants forest id match its progenitor forest id so do nothing if this is the case
-                    if (curforest == refforest):
+                    if (ForestMap[curforest] == ForestMap[refforest]):
                         continue
-
-                    #print(j, k, idescen, halodata[k]['ForestID'][idescen], halodata[j]['ForestID'][itail])
-                    #blah = np.where(halodata[k]['ForestID'][descens] ==  curforest)
-                    #print('blah', len(blah[0]))
-                    #print('descen size', descenforest[halodata[k]['ForestID'][idescen]])
-                    #print('active size', activeforest[halodata[j]['ForestID'][itail]])
-                    # if (descenforest[halodata[k]['ForestID'][idescen]]!= len(blah[0])): print('count does not match where! ', j, k, idescen, itail,
-                    #' forests', curforest, refforest,
-                    # ' counts ', descenforest[curforest], len(blah[0]), )
-                    # ' is touched? ', touchdescenforest[curforest])
-
-                    # if descendant has larger forest id, update the forest id, noting the size of the forest
-                    if (curforest > refforest):
-                        # check the descenforest list to see how many objects share this forest id, if more than one
-                        # run np.where and update the forest ids and the dictionary storing size info
-                        # currently the descenforest sizes are not working to I am always running  np.where, not ideal.
-                        wdata = []
-                        wdata = np.where(
-                            halodata[k]['ForestID'][descens] == curforest)[0]
-                        numincursnap = len(wdata)  # descenforest[curforest]
-                        ForestSizeStats[curforest] -= numincursnap
-                        ForestSizeStats[refforest] += numincursnap
-                        #descenforest[curforest] -= numincursnap
-                        #del descenforest[curforest]
-                        #descenforest[refforest] = numincursnap
-                        #activeforest[refforest] += numincursnap
-                        for ii in descens[wdata]:
-                            halodata[k]['ForestID'][ii] = refforest
-                        """
-                        if (numincursnap>1):
-                            touchdescenforest[curforest] = 2
-                            touchdescenforest[refforest] = -2
-                            wdata = np.where(halodata[k]['ForestID'][descens] ==  curforest)
-                            for ii in descens[wdata]: halodata[k]['ForestID'][ii] = refforest
-                        else :
-                            touchdescenforest[halodata[k]['ForestID'][idescen]] = 1
-                            touchdescenforest[halodata[j]['ForestID'][itail]] = -1
-                            halodata[k]['ForestID'][idescen] = refforest
-                        """
-
+                    # if ref forest is smaller update the mapping
+                    if (ForestMap[curforest] > ForestMap[refforest]):
+                        ForestMap[curforest]=ForestMap[refforest]
                         newforests += 1
                         incforests += 1
-                    # otherwise, update the progenitor forest ids. Does mean loops must be interated till no new links found
-                    else:
-                        wdata = []
-                        wdata = np.where(
-                            halodata[j]['ForestID'] == refforest)[0]
-                        numincursnap = len(wdata)  # activeforest[refforest]
-                        ForestSizeStats[curforest] += numincursnap
-                        ForestSizeStats[refforest] -= numincursnap
-                        #activeforest[refforest] = 0
-                        #del activeforest[refforest]
-                        #activeforest[curforest] = numincursnap
-                        #descenforest[curforest] += numincursnap
-                        for ii in wdata:
-                            halodata[j]['ForestID'][ii] = curforest
-                        """
-                        if (numincursnap>1):
-                            touchdescenforest[curforest] = 4
-                            wdata = np.where(halodata[j]['ForestID'] ==  refforest)[0]
-                            for ii in wdata: halodata[j]['ForestID'][ii] = curforest
-                        else :
-                            touchdescenforest[curforest] = 3
-                            halodata[j]['ForestID'][itail] = curforest
-                        """
-
+                    else :
+                        ForestMap[refforest]=ForestMap[curforest]
                         newforests += 1
                         incforests += 1
-            if (iverbose > 1):
-                print("done snap %d containing %d halos and found %d new forest links in a time of %f" % (
-                    j, numhalos[j], incforests, time.clock()-start3))
         if (iverbose):
             print('done walking forward, found  ', newforests, ' new forest links at ',
                   numloops, ' loop in a time of ', time.clock()-start2)
-        numloops += 1
+            sys.stdout.flush()
         if (newforests == 0):
             break
-    print('done linking between forests in %d in a time of %f' %
+        # update forest ids using map
+        start2 = time.clock()
+        for j in snaplist:
+            if (numhalos[j] == 0):
+                continue
+            for ihalo in range(numhalos[j]):
+                halodata[j]['ForestID'][ihalo]=ForestMap[halodata[j]['ForestID'][ihalo]]
+        if (iverbose):
+            print('Finished remapping in', time.clock()-start2)
+            sys.stdout.flush()
+        numloops += 1
+
+    print('Done linking between forests in %d in a time of %f' %
           (numloops, time.clock()-start1))
+    sys.stdout.flush()
+
     # get the size of each forest
-    ForestSize = np.array([ForestSizeStats[key]
-                           for key in ForestSizeStats.keys()])
-    wdata = np.where(ForestSize > 0)
-    ForestIDs = np.array(list(ForestSizeStats.keys()))[wdata]
-    ForestSize = ForestSize[wdata]
-    numforests = len(wdata[0])
-    wdata = []
-    maxforest = max(ForestSize)
+    ForestIDs, ForestSize = np.unique(np.concatenate(
+        [halodata[i]['ForestID'] for i in range(numsnaps)]), return_counts=True)
+    numforests = ForestIDs.size
+    maxforest = np.max(ForestSize)
+    print('Forest consists of ', numforests, 'with largest', maxforest)
 
     ForestSizeStats = dict()
     ForestSizeStats['AllSnaps'] = dict(zip(ForestIDs, ForestSize))
@@ -2417,33 +2423,34 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
                                      i][np.where(np.in1d(ForestIDs, activeforest))] = counts
 
     start2 = time.clock()
-    # first identify all subhalos and see if any have subhalo connections with different than their host
-    if (ireversesnaporder):
-        snaplist = np.arange(0, numsnaps, dtype=np.int32)
-    else:
-        snaplist = np.arange(numsnaps-1, -1, -1)
-    for j in snaplist:
-        if (numhalos[j] == 0):
-            continue
-        # now with tree start at last snapshot and identify all root heads
-        # only look at halos that are their own root head and are not subhalos
-        missingforest = np.where((halodata[j]['ForestID'] == -1))
-        rootheads = np.where(
-            (halodata[j]['ID'] == halodata[j]['RootHead'])*(halodata[j]['ForestID'] == -1))
-        subrootheads = np.where(
-            (halodata[j]['ForestID'] == -1)*(halodata[j]['hostHaloID'] != -1))
-        if (iverbose > 2):
-            print("At snapshot", j, " still have ", halodata[j]['ForestID'].size, len(
-                missingforest[0]), " with no forest id ! Of which ", len(rootheads[0]), " are root heads", len(subrootheads[0]), "are subhalos")
-        #if (iverbose and len(missingforest[0])>0): print("At snapshot", j, " still have ", len(missingforest[0]), " with no forest id ! Of which ", len(rootheads[0]), " are root heads", len(subrootheads[0]), "are subhalos")
-        if (len(subrootheads[0]) > 0):
-            for isub in subrootheads[0]:
-                hostid = halodata[j]['hostHaloID'][isub]
-                hostindex = int(hostid % TEMPORALHALOIDVAL-1)
-                halodata[j]['ForestID'][isub] = halodata[j]['ForestID'][hostindex]
-                halodata[j]['ForestLevel'][isub] = halodata[j]['ForestLevel'][hostindex]+1
+    if (icheckforest):
+        # first identify all subhalos and see if any have subhalo connections with different than their host
+        if (ireversesnaporder):
+            snaplist = np.arange(0, numsnaps, dtype=np.int32)
+        else:
+            snaplist = np.arange(numsnaps-1, -1, -1)
+        for j in snaplist:
+            if (numhalos[j] == 0):
+                 continue
+            subs = np.where(halodata[j]['hostHaloID'] != -1)[0]
+            nomatchsubs = 0
+            if (subs.size==0): continue
+            hosts = np.array(halodata[j]['hostHaloID'][subs] % 1000000000000 - 1, dtype=np.int64)
+            mismatch = np.where(halodata[j]['ForestID'][subs] != halodata[j]['ForestID'][hosts])[0]
+            nomatchsubs += mismatch.size
+            if (mismatch.size > 0):
+                print('ERROR: snap',j,'nomatch subs',mismatch.size, 'totsubs',subs.size)
+        if (nomatchsubs > 0):
+            print('ERROR, forest ids show mistmatches between subs and hosts',nomatchsubs)
+            print('Returning null and reseting forest ids')
+            for j in range(numsnaps):
+                halodata[j]["ForestID"] = np.ones(numhalos[j], dtype=np.int64)*-1
+                halodata[j]["ForestLevel"] = np.ones(numhalos[j], dtype=np.int32)*-1
+            return []
+
     # then return this
     print("Done generating forest", time.clock()-start)
+    sys.stdout.flush()
     return ForestSizeStats
 
 
@@ -2665,10 +2672,10 @@ def WriteCombinedUnifiedTreeandHaloCatalog(fname, numsnaps, rawtree, numhalos, h
     """
 
     if (ibuildheadtail == 1):
-        BuildTemporalHeadTail(numsnaps, tree, numhalos, halodata)
+        BuildTemporalHeadTail(numsnaps, rawtree, numhalos, halodata)
     if (ibuildmajormergers == 1):
-        IdentifyMergers(numsnaps, tree, numhalos,
-                        halodata, boxsize, hval, atime)
+        IdentifyMergers(numsnaps, rawtree, numhalos,
+                        halodata, cosmodata['BoxSize'], cosmodata['Hubble_param'], atime)
     hdffile = h5py.File(fname+".snap.hdf.data", 'w')
     headergrp = hdffile.create_group("Header")
     # store useful information such as number of snapshots, halos,
@@ -3037,7 +3044,7 @@ def FixTruncationBranchSwapsInTreeDescendantAndWrite(rawtreefname, reducedtreena
     # and also extract the description used to make the tree
     numsnaps = len(rawtreedata)
     if (ibuildtree):
-        halo = [dict() for i in range(numsnaps)]
+        halodata = [dict() for i in range(numsnaps)]
         numhalos = np.zeros(numsnaps, dtype=np.uint64)
         BuildTemporalHeadTailDescendant(
             numsnaps, rawtreedata, numhalos, halodata, TEMPORALHALOIDVAL)
@@ -3047,12 +3054,14 @@ def FixTruncationBranchSwapsInTreeDescendantAndWrite(rawtreefname, reducedtreena
     proplist = ['npart', 'hostHaloID', 'Structuretype', 'ID', 'Xc',
                 'Yc', 'Zc', 'VXc', 'VYc', 'VZc', 'Rmax', 'Vmax', 'R_200crit']
     numhalos = np.zeros(numsnaps, dtype=np.uint64)
+    atime = np.zeros(numsnaps)
     snaplist = open(snapproplistfname, 'r')
     for i in range(numsnaps):
         snapfile = snaplist.readline().strip()
         halotemp, numhalos[i] = ReadPropertyFile(
             snapfile, inputpropformat, inputpropsplitformat, 0, proplist)
         halodata[i].update(halotemp)
+        atime[i]=halodata[i]['SimulationInfo']['ScaleFactor']
     halodata = FixTruncationBranchSwapsInTreeDescendant(numsnaps, rawtreedata, halodata, numhalos,
                                                         npartlim, meritlim, xdifflim, vdifflim, nsnapsearch,
                                                         TEMPORALHALOIDVAL)
@@ -3063,7 +3072,7 @@ def FixTruncationBranchSwapsInTreeDescendantAndWrite(rawtreefname, reducedtreena
 
 def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numhalos,
                                              npartlim=200, meritlim=0.025, xdifflim=2.0, vdifflim=1.0, nsnapsearch=4,
-                                             TEMPORALHALOIDVAL=1000000000000, iverbose=0):
+                                             TEMPORALHALOIDVAL=1000000000000, iverbose=1):
     """
     Updates the walkable tree information stored with the halo data
     by using the raw tree produced by TreeFrog to correct any branch swap events leading to truncation
@@ -3071,34 +3080,38 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
     raw tre information with merits and secondary rank descendants.
     """
     start = time.clock()
+    start0 = time.clock()
     print('Starting to fix branches')
     SimulationInfo = copy.deepcopy(halodata[0]['SimulationInfo'])
     UnitInfo = copy.deepcopy(halodata[0]['UnitInfo'])
     period = SimulationInfo['Period']
     converttocomove = ['Xc', 'Yc', 'Zc', 'Rmax', 'R_200crit']
+    keys = halodata[0].keys()
+    for key in converttocomove:
+        if key not in keys:
+            converttocomove.remove(key)
     # convert positions and sizes to comoving if necesary
     if (UnitInfo['Comoving_or_Physical'] == 0 and SimulationInfo['Cosmological_Sim'] == 1):
-        keys=halodata[0].keys()
+        print('Converting to comoving')
         for i in range(numsnaps):
             for key in converttocomove:
-                if key not in keys: continue
                 halodata[i][key] /= halodata[i]['SimulationInfo']['ScaleFactor']
         # extracted period from first snap so can use the scale factor stored in simulation info
         period /= SimulationInfo['ScaleFactor']
-    atime = np.zeros(numsnaps)
-    numhalos = np.zeros(numsnaps, dtype=np.int64)
-    for i in range(numsnaps):
-        atime[i] = halodata[i]['SimulationInfo']['ScaleFactor']
-        numhalos[i] = len(halodata[i]['Xc'])
-
+    print(time.clock()-start0)
     for i in range(numsnaps-1):
+        start1=time.clock()
         # find halos with no progenitors that are large enough and continue to exist for several snapshots
         if(numhalos[i] == 0):
             continue
         noprog = np.where((halodata[i]['Tail'] == halodata[i]['ID'])*(
             halodata[i]['npart'] >= npartlim)*(halodata[i]['Head'] != halodata[i]['ID']))
         if (len(noprog[0]) == 0):
+            if (iverbose):
+                print('finshed snap, no missing progens ',i,time.clock()-start1)
             continue
+        if (iverbose):
+            print('snap',i,' number with missing progens ',len(noprog[0]))
         # have object with no progenitor
         for inoprog in noprog[0]:
             # have object with no progenitor
@@ -3116,7 +3129,7 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
             if (haloHost == -1):
                 haloHost = halodata[haloSnap]['ID'][haloIndex]
 
-            if (iverbose):
+            if (iverbose>1):
                 print('halo with no progenitor', haloID, halodata[i]['npart'][inoprog], halodata[i]['Structuretype'][inoprog],
                       haloHost, halodata[i]['Head'][inoprog],
                       halodata[np.uint32(halodata[i]['Head'][inoprog]/TEMPORALHALOIDVAL)]['Tail'][np.uint64(halodata[i]['Head'][inoprog] % TEMPORALHALOIDVAL-1)])
@@ -3154,7 +3167,7 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
             mergeIndex = np.uint64(mergeHalo % TEMPORALHALOIDVAL-1)
             if (treedata[mergeSnap]['Rank'][mergeIndex][0] != 0):
                 continue
-            if (iverbose):
+            if (iverbose>1):
                 print(haloID, 'may have found merge halo', mergeHalo,
                       treedata[mergeSnap]['Descen'][mergeIndex], treedata[mergeSnap]['Merit'][mergeIndex], treedata[mergeSnap]['Rank'][mergeIndex])
 
@@ -3241,7 +3254,7 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
             branchfixHead = halodata[branchfixSnap]['Head'][branchfixIndex]
             branchfixHeadSnap = np.uint64(branchfixHead/TEMPORALHALOIDVAL)
             branchfixHeadIndex = np.uint64(branchfixHead % TEMPORALHALOIDVAL-1)
-            if (iverbose):
+            if (iverbose>1):
                 print('halo branch swap occurs at ', haloID, 'now should have progenitor', mergeHalo,
                       'with ', branchfixHalo, ' taking over ', postmergeHalo, minxdiff, minvdiff)
             # now adjust these points, mergeHalo must have its Head changed,
@@ -3253,11 +3266,11 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
             newroottailSnap = halodata[mergeSnap]['RootTailSnap'][mergeIndex]
             newroottailbranchfixSnap = halodata[branchfixSnap]['RootTailSnap'][branchfixIndex]
             oldroottail = halodata[postmergeSnap]['RootTail'][postmergeIndex]
-            if (iverbose):
+            if (iverbose>1):
                 print('new tails will be ', newroottail, newroottailbranchfix)
 
             # adjust head tails of object with no progenitor
-            if (iverbose):
+            if (iverbose>1):
                 print('before fix merge', mergeHalo, halodata[mergeSnap]['Head']
                       [mergeIndex], 'no prog', haloID, halodata[haloSnap]['Tail'][haloIndex])
             halodata[mergeSnap]['Head'][mergeIndex] = haloID
@@ -3266,7 +3279,7 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
             halodata[haloSnap]['TailSnap'][haloIndex] = mergeSnap
 
             # adjust head tails of branch swap line
-            if (iverbose):
+            if (iverbose>1):
                 print('before fix branch fix', branchfixHalo, halodata[branchfixSnap]['Head'][branchfixIndex],
                       ' post merge', postmergeHalo, halodata[postmergeSnap]['Tail'][postmergeIndex])
             halodata[branchfixSnap]['Head'][branchfixIndex] = postmergeHalo
@@ -3284,7 +3297,7 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
             curIndex = np.uint64(curHalo % TEMPORALHALOIDVAL-1)
             # while (halodata[curSnap]['RootTail'][curIndex] ==  haloID):
             while (True):
-                if (iverbose):
+                if (iverbose>1):
                     print('moving up branch to adjust the root tails', curHalo,
                           curSnap, halodata[curSnap]['RootTail'][curIndex], newroottail)
                 halodata[curSnap]['RootTail'][curIndex] = newroottail
@@ -3305,7 +3318,7 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
             # and halodata[curSnap]['Head'][curIndex]!= curHalo
             # while (halodata[curSnap]['RootTail'][curIndex] ==  oldroottail):
             while (True):
-                if (iverbose):
+                if (iverbose>1):
                     print('moving up fix branch to adjust the root tails', curHalo, curSnap,
                           halodata[curSnap]['RootTail'][curIndex], newroottailbranchfix)
                 halodata[curSnap]['RootTail'][curIndex] = newroottailbranchfix
@@ -3319,6 +3332,8 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
                 curHalo = halodata[curSnap]['Head'][curIndex]
                 curSnap = np.uint64(curHalo/TEMPORALHALOIDVAL)
                 curIndex = np.uint64(curHalo % TEMPORALHALOIDVAL-1)
+        if (iverbose):
+            print('finshed snap ',i,time.clock()-start1)
     print('Done fixing branches', time.clock()-start)
     # convert back to physical coordinates if necessary
     if (UnitInfo['Comoving_or_Physical'] == 0 and SimulationInfo['Cosmological_Sim'] == 1):
