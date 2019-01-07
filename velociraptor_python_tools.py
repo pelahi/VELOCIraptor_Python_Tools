@@ -2479,15 +2479,70 @@ Adjust halo catalog for period, comoving coords, etc
 """
 
 
-def AdjustforPeriod(numsnaps, halodata, icomove=0):
+def AdjustforPeriod(numsnaps, halodata, SimInfo= {}):
     """
     Map halo positions from 0 to box size
+
+    Parameters
+    ----------
+
+    numsnaps : int
+        The number of snapshots in the simulation
+    halodata : list of dictionary per snapshot containing the halo properties
+        The data structure containing the halo properties
+
+    Other Parameters
+    ----------------
+
+    SimInfo : dict
+        Dictionary containing the information of the simulation, see Notes below for how this should be set
+
+    Notes
+    -----
+
+    If SimInfo is parsed then this is used instead of the dictionary in halodata[snapnum]["SimulationInfo"]. The required structure for SimInfo dictionary is:
+
+    SimInfo = {
+    "Comoving":0 if physical or 1 if comoving,
+    "Boxsize":comoving boxsize of the simulation box,
+    "h_val":reduced hubble parameter (only required if Comoving=0),
+    "ScaleFactor":list or array of scalefactors per snapshot (numsnaps long, only required if Comoving=0)
+    }
+
     """
     for i in range(numsnaps):
-        if (icomove):
-            boxval = halodata[i]["SimulationInfo"]["Period"]*halodata[i]["SimulationInfo"]["h_val"]/halodata[i]["SimulationInfo"]["ScaleFactor"]
+
+        #Check if the SimInfo exits
+        if(SimInfo):
+
+            #Check if the Comoving flag exist in the SimInfo dictionary
+            if("Comoving" not in SimInfo):
+                print("Comoving is not within SimInfo, please update so it contains this key")
+                return
+
+            #Check all the required keys are in the dictionary
+            if(SimInfo["Comoving"]): required_keys = ["Boxsize"]
+            else: required_keys = ["Boxsize","h_val","ScaleFactor"]
+            for key in required_keys:
+                if(key not in SimInfo):
+                    print(key,"is not within SimInfo, please update so it contains this key")
+                    return
+
+            #Update the boxval if comoving or not
+            if(SimInfo["Comoving"]):
+                boxval = SimInfo["Boxsize"]
+            else:
+                boxval = SimInfo["Boxsize"]*SimInfo["ScaleFactor"]/SimInfo["h_val"]
+
+
         else:
-            boxval = halodata[i]["SimulationInfo"]["Period"]
+
+            #Update the boxval if comoving or not
+            if (halodata[i]["UnitInfo"]["Comoving_or_Physical"]):
+                boxval = halodata[i]["SimulationInfo"]["Period"]*halodata[i]["SimulationInfo"]["h_val"]/halodata[i]["SimulationInfo"]["ScaleFactor"]
+            else:
+                boxval = halodata[i]["SimulationInfo"]["Period"]
+
         wdata = np.where(halodata[i]["Xc"] < 0)
         halodata[i]["Xc"][wdata] += boxval
         wdata = np.where(halodata[i]["Yc"] < 0)
@@ -2495,11 +2550,11 @@ def AdjustforPeriod(numsnaps, halodata, icomove=0):
         wdata = np.where(halodata[i]["Zc"] < 0)
         halodata[i]["Zc"][wdata] += boxval
 
-        wdata = np.where(halodata[i]["Xc"] > boxval)
+        wdata = np.where(halodata[i]["Xc"] >= boxval)
         halodata[i]["Xc"][wdata] -= boxval
-        wdata = np.where(halodata[i]["Yc"] > boxval)
+        wdata = np.where(halodata[i]["Yc"] >= boxval)
         halodata[i]["Yc"][wdata] -= boxval
-        wdata = np.where(halodata[i]["Zc"] > boxval)
+        wdata = np.where(halodata[i]["Zc"] >= boxval)
         halodata[i]["Zc"][wdata] -= boxval
 
 
