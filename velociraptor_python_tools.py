@@ -478,7 +478,7 @@ class MinStorageList():
 def ReadHaloMergerTreeDescendant(treefilename, ireverseorder=False, ibinary=0,
                                  iverbose=0, imerit=False, inpart=False,
                                  ireducedtobestranks=False, meritlimit=0.025,
-                                 ireducemem=True):
+                                 ireducemem=True,iprimarydescen=False):
     """
     VELOCIraptor/STF descendant based merger tree in ascii format contains
     a header with
@@ -527,6 +527,11 @@ def ReadHaloMergerTreeDescendant(treefilename, ireverseorder=False, ibinary=0,
         print("Unknown format, returning null")
         numsnap = 0
         return tree
+
+    #Check for flag compatibility
+    if(ireducemem & iprimarydescen):
+        print("Warning: Both the ireducemem and iprimarydescen are set to True. The ireducemem is not needed for iprimarydescen flag \nas it already had reduced memory footprint, due to only primiary descendants being extracted")
+        ireducemem=False
 
     tree = [{"haloID": [], "Num_descen": [], "Descen": [], "Rank": []}
             for i in range(numsnap)]
@@ -632,10 +637,13 @@ def ReadHaloMergerTreeDescendant(treefilename, ireverseorder=False, ibinary=0,
             memsize *= numhalos
             if (ireducemem):
                 print("Reducing memory, changes api.")
-                print("Data contains ", numhalos, "halos and will likley minimum ", memsize/1024.**3.0, "GB of memory")
+                print("Data contains ", numhalos, "halos and will likley need a minimum of", memsize/1024.**3.0, "GB of memory")
+            elif(iprimarydescen):
+                print("Extracting just the primary descendants")
+                print("Data contains ", numhalos, "halos and will likley need a minimum of", memsize/1024.**3.0, "GB of memory")
             else:
                 print("Contains ", numhalos, "halos and will likley minimum ", memsize/1024.**3.0, "GB of memory")
-                print("Plus overhead to store list of arrays, with likely minimum of ",100*numhalos/1024**3.0, "GB of memory ")
+                print("Plus overhead to store list of arrays, with likely need a minimum of ",100*numhalos/1024**3.0, "GB of memory ")
             treedata.close()
         for snap in range(numsnap):
             snaptreename = snaptreenames[snap]
@@ -643,8 +651,8 @@ def ReadHaloMergerTreeDescendant(treefilename, ireverseorder=False, ibinary=0,
             if (iverbose):
                 print("Reading", snaptreename)
             treedata = h5py.File(snaptreename, "r")
-            tree[snap]["haloID"] = np.array(treedata["ID"])
-            tree[snap]["Num_descen"] = np.array(treedata["NumDesc"],np.uint16)
+            tree[snap]["haloID"] = np.asarray(treedata["ID"])
+            tree[snap]["Num_descen"] = np.asarray(treedata["NumDesc"],np.uint16)
             numhalos=tree[snap]["haloID"].size
             if(inpart):
                 tree[snap]["Npart"] = np.asarray(treedata["Npart"],np.int32)
@@ -654,9 +662,14 @@ def ReadHaloMergerTreeDescendant(treefilename, ireverseorder=False, ibinary=0,
 
                 # Find the indices to split the array
                 if (ireducemem):
-                    tree[snap]["_Offsets"] = np.array(treedata["DescOffsets"],dtype=np.uint64)
+                    tree[snap]["_Offsets"] = np.asarray(treedata["DescOffsets"],dtype=np.uint64)
+                elif(iprimarydescen):
+                    offsets = np.asarray(treedata["DescOffsets"],dtype=np.uint64)
+                    #Only include the offset for the last halo in the array if it has a descendant
+                    if(offsets.size):
+                        if(tree[snap]["Num_descen"][-1]==0): offsets = offsets[:-1]
                 else:
-                    descenoff=np.array(treedata["DescOffsets"],dtype=np.uint64)
+                    descenoff=np.asarray(treedata["DescOffsets"],dtype=np.uint64)
                     split = np.add(descenoff, tree[snap]["Num_descen"], dtype=np.uint64, casting="unsafe")[:-1]
                     descenoff=None
 
@@ -665,29 +678,36 @@ def ReadHaloMergerTreeDescendant(treefilename, ireverseorder=False, ibinary=0,
                 # and generate class that returns the appropriate subchunk as an array when using the [] operaotor
                 # otherwise generate lists of arrays
                 if (ireducemem):
-                    tree[snap]["_Ranks"] = np.array(treedata["Ranks"],dtype=np.int16)
-                    tree[snap]["_Descens"] = np.array(treedata["Descendants"],dtype=np.uint64)
+                    tree[snap]["_Ranks"] = np.asarray(treedata["Ranks"],dtype=np.int16)
+                    tree[snap]["_Descens"] = np.asarray(treedata["Descendants"],dtype=np.uint64)
                     tree[snap]["Rank"] = MinStorageList(tree[snap]["Num_descen"],tree[snap]["_Offsets"],tree[snap]["_Ranks"])
                     tree[snap]["Descen"] = MinStorageList(tree[snap]["Num_descen"],tree[snap]["_Offsets"],tree[snap]["_Descens"])
+                elif(iprimarydescen):
+                    tree[snap]["Rank"] = np.asarray(treedata["Ranks"],dtype=np.uint16)[offsets]
+                    tree[snap]["Descen"] = np.asarray(treedata["Descendants"],dtype=np.uint64)[offsets]
                 else:
-                    tree[snap]["Rank"] = np.split(np.array(treedata["Ranks"],dtype=np.uint16), split)
-                    tree[snap]["Descen"] = np.split(np.array(treedata["Descendants"],dtype=np.uint64), split)
+                    tree[snap]["Rank"] = np.split(np.asarray(treedata["Ranks"],dtype=np.uint16), split)
+                    tree[snap]["Descen"] = np.split(np.asarray(treedata["Descendants"],dtype=np.uint64), split)
 
                 if(inpart):
                     if (ireducemem):
-                        tree[snap]["_Npart_descens"] = np.array(treedata["DescenNpart"],np.float32)
+                        tree[snap]["_Npart_descens"] = np.asarray(treedata["DescenNpart"],np.uint64)
                         tree[snap]["Npart_descen"] = MinStorageList(tree[snap]["Num_descen"],tree[snap]["_Offsets"],tree[snap]["_Npart_descens"])
+                    elif(iprimarydescen):
+                        tree[snap]["Npart_descen"] = np.asarray(treedata["DescenNpart"],np.uint64)[offsets]
                     else:
-                        tree[snap]["Npart_descen"] = np.split(np.array(treedata["DescenNpart"],np.int32), split)
+                        tree[snap]["Npart_descen"] = np.split(np.asarray(treedata["DescenNpart"],np.uint64), split)
                 if(imerit):
                     if (ireducemem):
-                        tree[snap]["_Merits"] = np.array(treedata["Merits"],np.float32)
+                        tree[snap]["_Merits"] = np.asarray(treedata["Merits"],np.float32)
                         tree[snap]["Merit"] = MinStorageList(tree[snap]["Num_descen"],tree[snap]["_Offsets"],tree[snap]["_Merits"])
+                    elif(iprimarydescen):
+                        tree[snap]["Merit"] = np.asarray(treedata["Merits"],np.float32)[offsets]
                     else:
-                        tree[snap]["Merit"] = np.split(np.array(treedata["Merits"],np.float32), split)
+                        tree[snap]["Merit"] = np.split(np.asarray(treedata["Merits"],np.float32), split)
                 #if reducing stuff down to best ranks, then only keep first descendant
                 #unless also reading merit and then keep first descendant and all other descendants that are above a merit limit
-                if (ireducedtobestranks==True and ireducemem==False):
+                if (ireducedtobestranks==True and ireducemem==False and iprimarydescen==False):
                     halolist = np.where(tree[snap]["Num_descen"]>1)[0]
                     if (iverbose):
                         print('Reducing memory needed. At snap ', snap, ' with %d total halos and alter %d halos. '% (len(tree[snap]['Num_descen']), len(halolist)))
@@ -697,12 +717,12 @@ def ReadHaloMergerTreeDescendant(treefilename, ireverseorder=False, ibinary=0,
                         if (imerit):
                             numdescen = np.int32(np.max([1,np.argmax(tree[snap]["Merit"][ihalo]<meritlimit)]))
                         tree[snap]["Num_descen"][ihalo] = numdescen
-                        tree[snap]["Descen"][ihalo] = np.array([tree[snap]["Descen"][ihalo][:numdescen]])
-                        tree[snap]["Rank"][ihalo] = np.array([tree[snap]["Rank"][ihalo][:numdescen]])
+                        tree[snap]["Descen"][ihalo] = np.asarray([tree[snap]["Descen"][ihalo][:numdescen]])
+                        tree[snap]["Rank"][ihalo] = np.asarray([tree[snap]["Rank"][ihalo][:numdescen]])
                         if (imerit):
-                            tree[snap]["Merit"][ihalo] = np.array([tree[snap]["Merit"][ihalo][:numdescen]])
+                            tree[snap]["Merit"][ihalo] = np.asarray([tree[snap]["Merit"][ihalo][:numdescen]])
                         if (inpart):
-                            tree[snap]["Npart_descen"][ihalo] = np.array([tree[snap]["Npart_descen"][ihalo][:numdescen]])
+                            tree[snap]["Npart_descen"][ihalo] = np.asarray([tree[snap]["Npart_descen"][ihalo][:numdescen]])
                 split=None
             treedata.close()
 
@@ -2477,15 +2497,70 @@ Adjust halo catalog for period, comoving coords, etc
 """
 
 
-def AdjustforPeriod(numsnaps, numhalos, boxsize, hval, atime, halodata, icomove=0):
+def AdjustforPeriod(numsnaps, halodata, SimInfo= {}):
     """
     Map halo positions from 0 to box size
+
+    Parameters
+    ----------
+
+    numsnaps : int
+        The number of snapshots in the simulation
+    halodata : list of dictionary per snapshot containing the halo properties
+        The data structure containing the halo properties
+
+    Other Parameters
+    ----------------
+
+    SimInfo : dict
+        Dictionary containing the information of the simulation, see Notes below for how this should be set
+
+    Notes
+    -----
+
+    If SimInfo is parsed then this is used instead of the dictionary in halodata[snapnum]["SimulationInfo"]. The required structure for SimInfo dictionary is:
+
+    SimInfo = {
+    "Comoving":0 if physical or 1 if comoving,
+    "Boxsize":comoving boxsize of the simulation box,
+    "h_val":reduced hubble parameter (only required if Comoving=0),
+    "ScaleFactor":list or array of scalefactors per snapshot (numsnaps long, only required if Comoving=0)
+    }
+
     """
     for i in range(numsnaps):
-        if (icomove):
-            boxval = boxsize/hval
+
+        #Check if the SimInfo exits
+        if(SimInfo):
+
+            #Check if the Comoving flag exist in the SimInfo dictionary
+            if("Comoving" not in SimInfo):
+                print("Comoving is not within SimInfo, please update so it contains this key")
+                return
+
+            #Check all the required keys are in the dictionary
+            if(SimInfo["Comoving"]): required_keys = ["Boxsize"]
+            else: required_keys = ["Boxsize","h_val","ScaleFactor"]
+            for key in required_keys:
+                if(key not in SimInfo):
+                    print(key,"is not within SimInfo, please update so it contains this key")
+                    return
+
+            #Update the boxval if comoving or not
+            if(SimInfo["Comoving"]):
+                boxval = SimInfo["Boxsize"]
+            else:
+                boxval = SimInfo["Boxsize"]*SimInfo["ScaleFactor"]/SimInfo["h_val"]
+
+
         else:
-            boxval = boxsize*atime[i]/hval
+
+            #Update the boxval if comoving or not
+            if (halodata[i]["UnitInfo"]["Comoving_or_Physical"]):
+                boxval = halodata[i]["SimulationInfo"]["Period"]*halodata[i]["SimulationInfo"]["h_val"]/halodata[i]["SimulationInfo"]["ScaleFactor"]
+            else:
+                boxval = halodata[i]["SimulationInfo"]["Period"]
+
         wdata = np.where(halodata[i]["Xc"] < 0)
         halodata[i]["Xc"][wdata] += boxval
         wdata = np.where(halodata[i]["Yc"] < 0)
@@ -2493,11 +2568,11 @@ def AdjustforPeriod(numsnaps, numhalos, boxsize, hval, atime, halodata, icomove=
         wdata = np.where(halodata[i]["Zc"] < 0)
         halodata[i]["Zc"][wdata] += boxval
 
-        wdata = np.where(halodata[i]["Xc"] > boxval)
+        wdata = np.where(halodata[i]["Xc"] >= boxval)
         halodata[i]["Xc"][wdata] -= boxval
-        wdata = np.where(halodata[i]["Yc"] > boxval)
+        wdata = np.where(halodata[i]["Yc"] >= boxval)
         halodata[i]["Yc"][wdata] -= boxval
-        wdata = np.where(halodata[i]["Zc"] > boxval)
+        wdata = np.where(halodata[i]["Zc"] >= boxval)
         halodata[i]["Zc"][wdata] -= boxval
 
 
