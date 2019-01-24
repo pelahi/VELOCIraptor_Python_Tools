@@ -2367,10 +2367,9 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
         if (iverbose):
             print('walking forward in time to identify forest id mappings')
             sys.stdout.flush()
+        snaplist = np.arange(numsnaps,dtype=np.int32)
         if (ireversesnaporder):
-            snaplist = np.arange(0, numsnaps-1, dtype=np.int32)[::-1]
-        else:
-            snaplist = np.arange(numsnaps-1, 0, -1)[::-1]
+            snaplist = snaplist[::-1]
         for j in snaplist:
             if (numhalos[j] == 0):
                 continue
@@ -2435,7 +2434,7 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
             sys.stdout.flush()
         numloops += 1
 
-    print('Done secondary progenitor/descendant linking clean up between forests in %d in a time of %f' %
+    print('Done forests in %d in a time of %f' %
           (numloops, time.clock()-start1))
     sys.stdout.flush()
 
