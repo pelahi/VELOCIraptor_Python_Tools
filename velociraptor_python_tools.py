@@ -1652,7 +1652,7 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
             halodata[istart]['RootTailSnap'][wdata] = istart*np.ones(wdata.size, dtype=np.int32)
         #init heads to ids
         halodata[istart]['Head'] = np.array(halodata[istart]['ID'],copy=True)
-        halodata[istart]['HeadSnap'] = istart*np.ones(numhalos[istart])
+        halodata[istart]['HeadSnap'] = istart*np.ones(numhalos[istart],dtype = np.int32)
         #find all halos that have descendants and set there heads
         if (istart == numsnaps-1):
             halodata[istart]['RootHead'] = np.array(halodata[istart]['ID'],copy=True)
