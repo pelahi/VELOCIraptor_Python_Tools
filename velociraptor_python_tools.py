@@ -1608,10 +1608,14 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
         halodata[k]['Tail'] = np.zeros(numhalos[k], dtype=np.int64)
         halodata[k]['HeadSnap'] = np.zeros(numhalos[k], dtype=np.int32)
         halodata[k]['TailSnap'] = np.zeros(numhalos[k], dtype=np.int32)
+        halodata[k]['HeadIndex'] = np.zeros(numhalos[k], dtype=np.int64)
+        halodata[k]['TailIndex'] = np.zeros(numhalos[k], dtype=np.int64)
         halodata[k]['RootHead'] = np.zeros(numhalos[k], dtype=np.int64)
         halodata[k]['RootTail'] = np.zeros(numhalos[k], dtype=np.int64)
         halodata[k]['RootHeadSnap'] = np.zeros(numhalos[k], dtype=np.int32)
         halodata[k]['RootTailSnap'] = np.zeros(numhalos[k], dtype=np.int32)
+        halodata[k]['RootHeadIndex'] = np.zeros(numhalos[k], dtype=np.int64)
+        halodata[k]['RootTailIndex'] = np.zeros(numhalos[k], dtype=np.int64)
         halodata[k]['HeadRank'] = np.zeros(numhalos[k], dtype=np.int64)
         halodata[k]['Num_descen'] = np.zeros(numhalos[k], dtype=np.uint32)
         halodata[k]['Num_progen'] = np.zeros(numhalos[k], dtype=np.uint32)
@@ -1650,13 +1654,18 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
             halodata[istart]['RootTail'][wdata] = np.array(halodata[istart]['ID'][wdata],copy=True)
             halodata[istart]['TailSnap'][wdata] = istart*np.ones(wdata.size, dtype=np.int32)
             halodata[istart]['RootTailSnap'][wdata] = istart*np.ones(wdata.size, dtype=np.int32)
+            halodata[istart]['TailIndex'][wdata] = np.array(halodata[istart]['ID'][wdata]% TEMPORALHALOIDVAL - 1,dtype=np.int64,copy=True)
+            halodata[istart]['RootTailIndex'][wdata] = np.array(halodata[istart]['ID'][wdata]% TEMPORALHALOIDVAL - 1,dtype=np.int64,copy=True)
+
         #init heads to ids
         halodata[istart]['Head'] = np.array(halodata[istart]['ID'],copy=True)
         halodata[istart]['HeadSnap'] = istart*np.ones(numhalos[istart],dtype = np.int32)
+        halodata[istart]['HeadIndex'] = np.array(halodata[istart]['ID']% TEMPORALHALOIDVAL - 1, dtype=np.int64,copy=True)
         #find all halos that have descendants and set there heads
         if (istart == numsnaps-1):
             halodata[istart]['RootHead'] = np.array(halodata[istart]['ID'],copy=True)
             halodata[istart]['RootHeadSnap'] = istart*np.ones(numhalos[istart], dtype=np.int32)
+            halodata[istart]['RootHeadIndex'] = np.array(halodata[istart]['ID']% TEMPORALHALOIDVAL - 1, dtype=np.int64,copy=True)
             continue
         wdata = None
         descencheck=(tree[istart]['Num_descen']>0)
@@ -1679,6 +1688,7 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
             halodata[istart]['HeadRank'][wdata] = np.array(ranks, copy=True)
             halodata[istart]['Head'][wdata] = np.array(descenids, copy=True)
             halodata[istart]['HeadSnap'][wdata] = np.array(descensnaps, copy=True)
+            halodata[istart]['HeadIndex'][wdata] = np.array(descenindex, copy=True)
             # showld figure out how to speed this up
             for i in range(numwithdescen):
                 isnap, idescenindex = descensnaps[i], descenindex[i]
@@ -1702,12 +1712,14 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
                         halodata[isnap]['RootTail'][idescenindex] = halodata[istart]['RootTail'][index]
                         halodata[isnap]['TailSnap'][idescenindex] = istart
                         halodata[isnap]['RootTailSnap'][idescenindex] = halodata[istart]['RootTailSnap'][index]
+                        halodata[isnap]['TailIndex'][idescenindex] = index
+                        halodata[isnap]['RootTailIndex'][idescenindex] = halodata[istart]['RootTailIndex'][index]
                     #if tail was assigned then need to compare merits and designed which one to use
                     else:
                         #if can compare merits
                         if (imerit):
                             curMerit = activemerits[i]
-                            prevTailIndex = np.int64(halodata[isnap]['Tail'][idescenindex] % TEMPORALHALOIDVAL - 1)
+                            prevTailIndex = halodata[isnap]['TailIndex'][idescenindex]
                             prevTailSnap = halodata[isnap]['TailSnap'][idescenindex]
                             compMerit = tree[prevTailSnap]['Merit'][prevTailIndex][0]
                             if (curMerit > compMerit):
@@ -1716,6 +1728,8 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
                                 halodata[isnap]['RootTail'][idescenindex] = halodata[istart]['RootTail'][index]
                                 halodata[isnap]['TailSnap'][idescenindex] = istart
                                 halodata[isnap]['RootTailSnap'][idescenindex] = halodata[istart]['RootTailSnap'][index]
+                                halodata[isnap]['TailIndex'][idescenindex] = index
+                                halodata[isnap]['RootTailIndex'][idescenindex] = halodata[istart]['RootTailIndex'][index]
                             else:
                                 halodata[istart]['HeadRank'][index]=1
                         #if merits not present then assume first connection found is better
@@ -1730,6 +1744,7 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
         if (wdata.size > 0):
             halodata[istart]['RootHead'][wdata] = np.array(halodata[istart]['ID'][wdata], copy=True)
             halodata[istart]['RootHeadSnap'][wdata] = istart*np.ones(wdata.size, dtype=np.int32)
+            halodata[istart]['RootHeadIndex'][wdata] = np.array(halodata[istart]['ID'][wdata]% TEMPORALHALOIDVAL - 1, dtype=np.int64, copy=True)
         wdata = None
         descencheck = None
         if (iverbose > 0):
@@ -1757,8 +1772,8 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
             continue
 
         haloidarray = halodata[istart]['Tail'][wdata]
-        haloindexarray = np.array(haloidarray % TEMPORALHALOIDVAL -1, dtype=np.int64)
-        halosnaparray = np.array((haloidarray - haloindexarray - np.int64(1)) / TEMPORALHALOIDVAL, dtype=np.int32)
+        haloindexarray = halodata[istart]['TailIndex'][wdata]
+        halosnaparray = halodata[istart]['TailSnap'][wdata]
 
         if (ireverseorder):
             halosnaparray = numsnaps - 1 - halosnaparray
@@ -1766,6 +1781,7 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
         for i in np.arange(numactive,dtype=np.int64):
             halodata[halosnaparray[i]]['RootHead'][haloindexarray[i]]=halodata[istart]['RootHead'][wdata[i]]
             halodata[halosnaparray[i]]['RootHeadSnap'][haloindexarray[i]]=halodata[istart]['RootHeadSnap'][wdata[i]]
+            halodata[halosnaparray[i]]['RootHeadIndex'][haloindexarray[i]]=halodata[istart]['RootHeadIndex'][wdata[i]]
         wdata = None
         haloidarray = None
         haloindexarray = None
@@ -1803,15 +1819,18 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
             # increase the number of progenitors of this descendant
             roothead = halodata[maindescensnap[i]]['RootHead'][maindescenindex[i]]
             rootsnap = halodata[maindescensnap[i]]['RootHeadSnap'][maindescenindex[i]]
+            rootindex = halodata[maindescensnap[i]]['RootHeadIndex'][maindescenindex[i]]
             # now set the root head for all the progenitors of this object
             while (True):
                 halodata[halosnap]['RootHead'][haloindex] = roothead
                 halodata[halosnap]['RootHeadSnap'][haloindex] = rootsnap
+                halodata[halosnap]['RootHeadIndex'][haloindex] = rootindex
                 if (haloid == halodata[halosnap]['Tail'][haloindex]):
                     break
                 haloid = halodata[halosnap]['Tail'][haloindex]
-                halosnap = halodata[halosnap]['TailSnap'][haloindex]
-                haloindex = np.int64(haloid % TEMPORALHALOIDVAL - 1)
+                tmphalosnap = halodata[halosnap]['TailSnap'][haloindex]
+                haloindex = halodata[halosnap]['TailIndex'][haloindex]
+                halosnap=tmphalosnap
         rankedhalos = None
         rankedhaloindex = None
         maindescen = None
@@ -3094,8 +3113,8 @@ def WriteWalkableHDFTree(fname, numsnaps, tree, numhalos, halodata, atime,
     # now need to create groups for halos and then a group containing tree information
     snapsgrp = hdffile.create_group("Snapshots")
     # tree keys of interest
-    halokeys = ["RootHead", "RootHeadSnap", "Head", "HeadSnap", "Tail",
-                "TailSnap", "RootTail", "RootTailSnap", "ID", "Num_progen"]
+    halokeys = ["RootHead", "RootHeadSnap", "RootHeadIndex", "Head", "HeadSnap", "HeadIndex", "Tail",
+                "TailSnap", "TailIndex", "RootTail", "RootTailSnap", "RootTailIndex", "ID", "Num_progen"]
 
     for i in range(numsnaps):
         # note that I normally have information in reverse order so that might be something in the units
