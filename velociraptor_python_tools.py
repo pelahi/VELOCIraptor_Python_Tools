@@ -1069,8 +1069,8 @@ def ReadParticleDataFile(basefilename, ibinary=0, iseparatesubfiles=0, iparttype
                 if (iparttypes == 1):
                     tfile = h5py.File(tfilename, 'r')
                     utfile = h5py.File(utfilename, 'r')
-                    tdata = np.uint16(pfile["Particle_Types"])
-                    utdata = np.uint16(upfile["Particle_Types"])
+                    tdata = np.uint16(pfile["Particle_types"])
+                    utdata = np.uint16(upfile["Particle_types"])
                     tfile.close()
                     utfile.close()
 
@@ -1101,7 +1101,7 @@ def ReadParticleDataFile(basefilename, ibinary=0, iseparatesubfiles=0, iparttype
     return particledata
 
 
-def ReadSOParticleDataFile(basefilename, ibinary=0, iverbose=0, binarydtype=np.int64):
+def ReadSOParticleDataFile(basefilename, ibinary=0, iparttypes=0, iverbose=0, binarydtype=np.int64):
     """
     VELOCIraptor/STF catalog_group, catalog_particles and catalog_parttypes in various formats
 
@@ -1156,6 +1156,8 @@ def ReadSOParticleDataFile(basefilename, ibinary=0, iverbose=0, binarydtype=np.i
     particledata = dict()
     particledata['Npart'] = []
     particledata['Particle_IDs'] = []
+    if (iparttypes):
+        particledata['Particle_Types'] = []
     if (iverbose):
         print("SO lists contains ", numtotSO, " regions containing total of ",
               numtotparts, " in ", numfiles, " files")
@@ -1163,6 +1165,8 @@ def ReadSOParticleDataFile(basefilename, ibinary=0, iverbose=0, binarydtype=np.i
         return particledata
     particledata['Npart'] = np.zeros(numtotSO, dtype=np.uint64)
     particledata['Particle_IDs'] = [[] for i in range(numtotSO)]
+    if (iparttypes):
+        particledata['Particle_Types'] = [[] for i in range(numtotSO)]
 
     # now for all files
     counter = np.uint64(0)
@@ -1185,6 +1189,8 @@ def ReadSOParticleDataFile(basefilename, ibinary=0, iverbose=0, binarydtype=np.i
             numingroup = gdata[:numSO]
             offset = gdata[np.int64(numSO):np.int64(2*numSO)]
             piddata = gdata[np.int64(2*numSO):np.int64(2*numSO+numparts)]
+            if (iparttypes):
+                tdata = gdata[np.int64(2*numSO+numparts):np.int64(2*numSO+2*numparts)]
         # binary
         elif (ibinary == 1):
             gfile = open(filename, 'rb')
@@ -1194,6 +1200,8 @@ def ReadSOParticleDataFile(basefilename, ibinary=0, iverbose=0, binarydtype=np.i
             numingroup = np.fromfile(gfile, dtype=binarydtype, count=numSO)
             offset = np.fromfile(gfile, dtype=binarydtype, count=numSO)
             piddata = np.fromfile(gfile, dtype=binarydtype, count=numparts)
+            if (iparttypes):
+                tdata = np.fromfile(gfile, dtype=np.int32, count=numparts)
             gfile.close()
         # hdf
         elif (ibinary == 2):
@@ -1202,6 +1210,9 @@ def ReadSOParticleDataFile(basefilename, ibinary=0, iverbose=0, binarydtype=np.i
             numingroup = np.uint64(gfile["SO_size"])
             offset = np.uint64(gfile["Offset"])
             piddata = np.int64(gfile["Particle_IDs"])
+            if (iparttypes):
+                tdata = np.int64(gfile["Particle_types"])
+
             gfile.close()
 
         # now with data loaded, process it to produce data structure
@@ -1209,6 +1220,10 @@ def ReadSOParticleDataFile(basefilename, ibinary=0, iverbose=0, binarydtype=np.i
         for i in range(numSO):
             particledata['Particle_IDs'][int(
                 i+counter)] = np.array(piddata[offset[i]:offset[i]+numingroup[i]])
+        if (iparttypes):
+            for i in range(numSO):
+                particledata['Particle_types'][int(
+                    i+counter)] = np.array(tdata[offset[i]:offset[i]+numingroup[i]])
         counter += numSO
 
     return particledata
@@ -5057,7 +5072,7 @@ def ConvertASCIICatalogParticleTypeFileToHDF(basefilename, iunbound=0, iseparate
         else:
             cattemp = []
         hdffile.create_dataset(
-            "Particle_Types", data=np.array(cattemp, dtype=np.int64))
+            "Particle_types", data=np.array(cattemp, dtype=np.int64))
         hdffile.close()
     # if subhalos are written in separate files, then read them too
     if (iseparatesubfiles == 1):
@@ -5093,7 +5108,7 @@ def ConvertASCIICatalogParticleTypeFileToHDF(basefilename, iunbound=0, iseparate
             else:
                 cattemp = []
             hdffile.create_dataset(
-                "Particle_Types", data=np.array(cattemp, dtype=np.int64))
+                "Particle_types", data=np.array(cattemp, dtype=np.int64))
             hdffile.close()
 
 
