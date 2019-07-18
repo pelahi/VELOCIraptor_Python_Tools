@@ -41,7 +41,7 @@ Routines for reading velociraptor output
 """
 
 
-def ReadPropertyFile(basefilename, ibinary=0, iseparatesubfiles=0, iverbose=0, desiredfields=[], isiminfo=True, iunitinfo=True):
+def ReadPropertyFile(basefilename, ibinary=0, iseparatesubfiles=0, iverbose=0, desiredfields=[], isiminfo=True, iunitinfo=True, iconfiginfo=True):
     """
     VELOCIraptor/STF files in various formats
     for example ascii format contains
@@ -74,7 +74,7 @@ def ReadPropertyFile(basefilename, ibinary=0, iseparatesubfiles=0, iverbose=0, d
         filename = basefilename+".properties"+".0"
         inompi = False
         if (os.path.isfile(filename) == False):
-            print("file not found")
+            print("Could not find VELOCIraptor file as either",basefilename+".properties or",filename)
             return []
     byteoffset = 0
     # used to store fields, their type, etc
@@ -272,23 +272,21 @@ def ReadPropertyFile(basefilename, ibinary=0, iseparatesubfiles=0, iverbose=0, d
             if (numhalos > 0):
                 catalog[catvalue][noffset:noffset+numhalos] = htemp[i]
             noffset += numhalos
-    # load associated simulation info, time and units
+    # load associated simulation info, time, units and configuration options
     if (isiminfo):
-        siminfoname = basefilename+".siminfo"
-        siminfo = open(siminfoname, 'r')
-        catalog['SimulationInfo'] = dict()
-        for l in siminfo:
-            d = l.strip().split(' : ')
-            catalog['SimulationInfo'][d[0]] = float(d[1])
-        siminfo.close()
+        if(iverbose):
+            print("reading ",basefilename+".siminfo")
+        catalog['SimulationInfo'] = ReadSimInfo(basefilename)
+
     if (iunitinfo):
-        unitinfoname = basefilename+".units"
-        unitinfo = open(unitinfoname, 'r')
-        catalog['UnitInfo'] = dict()
-        for l in unitinfo:
-            d = l.strip().split(' : ')
-            catalog['UnitInfo'][d[0]] = float(d[1])
-        unitinfo.close()
+        if(iverbose):
+            print("reading ",basefilename+".unitinfo")
+        catalog['UnitInfo'] = ReadUnitInfo(basefilename)
+
+    if (iconfiginfo):
+        if(iverbose):
+            print("reading ",basefilename+".configuration")
+        catalog['ConfigurationInfo'] = ReadConfigInfo(basefilename)
 
     if (iverbose):
         print("done reading properties file ", time.clock()-start)
@@ -887,44 +885,175 @@ def ReadCrossCatalogList(fname, meritlim=0.1, iverbose=0):
 
 def ReadSimInfo(basefilename):
     """
-    Reads in the information in .siminfo and returns it as a dictionary
+    Reads in the information in the .siminfo file and returns it as a dictionary
     """
 
     filename = basefilename + ".siminfo"
 
     if (os.path.isfile(filename) == False):
-        print("file not found")
-        return []
+        print(filename,"not found")
+        return {}
 
     cosmodata = {}
     siminfofile = open(filename, "r")
-    line = siminfofile.readline().strip().split(" : ")
-    while(line[0] != ""):
-        cosmodata[line[0]] = float(line[1])
-        line = siminfofile.readline().strip().split(" : ")
+    for i,l in enumerate(siminfofile):
+
+        line = l.strip()
+
+        #See if this a comment
+        if(line==""):
+            continue
+
+        if(line[0]=="#"):
+            continue
+
+        try:
+            field, value = line.replace(" ","").split(':')
+        except ValueError:
+            print("Cannot read line",i,"of",filename,"continuing")
+            continue
+
+        #See if the datatype is present
+        if("#" in value):
+            value, datatype = value.split("#")
+            try:
+                typefunc = np.dtype(datatype).type
+            except:
+                print("Cannot interpret",datatype,"for field",field,"on line",i,"in",filename,"as a valid datatype, interpreting the value as float64")
+                typefunc = np.float64
+        else:
+            typefunc = np.float64
+
+        try:
+            #Find if the value is a list of values
+            if("," in value):
+                value = value.split(",")
+
+                #Remove any empty strings
+                value = list(filter(None,value))
+                cosmodata[field] = np.array(value,dtype=typefunc)
+            else:
+                cosmodata[field] = typefunc(value)
+        except ValueError:
+            print("Cannot interpret",value,"as a",np.dtype(typefunc))
+
     siminfofile.close()
     return cosmodata
 
 
 def ReadUnitInfo(basefilename):
     """
-    Reads in the information in .units and returns it as a dictionary
+    Reads in the information in the .units file and returns it as a dictionary
     """
 
     filename = basefilename + ".units"
 
     if (os.path.isfile(filename) == False):
-        print("file not found")
-        return []
+        print(filename,"not found")
+        return {}
 
-    unitdata = {}
-    unitsfile = open(filename, "r")
-    line = unitsfile.readline().strip().split(" : ")
-    while(line[0] != ""):
-        unitdata[line[0]] = float(line[1])
-        line = unitsfile.readline().strip().split(" : ")
+    unitsfile = open(filename, 'r')
+    unitdata = dict()
+    for i,l in enumerate(unitsfile):
+
+        line = l.strip()
+
+        #See if this a comment
+        if(line==""):
+            continue
+
+        if(line[0]=="#"):
+            continue
+
+        try:
+            field, value = line.replace(" ","").split(':')
+        except ValueError:
+            print("Cannot read line",i,"of",filename,"continuing")
+            continue
+
+        #See if the datatype is present
+        if("#" in value):
+            value, datatype = value.split("#")
+            try:
+                typefunc = np.dtype(datatype).type
+            except:
+                print("Cannot interpret",datatype,"for field",field,"on line",i,"in",filename,"as a valid datatype, interpreting the value as float64")
+                typefunc = np.float64
+        else:
+            typefunc = np.float64
+
+        try:
+            #Find if the value is a list of values
+            if("," in value):
+                value = value.split(",")
+
+                #Remove any empty strings
+                value = list(filter(None,value))
+                unitdata[field] = np.array(value,dtype=typefunc)
+            else:
+                unitdata[field] = typefunc(value)
+        except ValueError:
+            print("Cannot interpret",value,"as a",np.dtype(typefunc))
+
     unitsfile.close()
     return unitdata
+
+
+def ReadConfigInfo(basefilename):
+    """
+    Reads in the information in the .configuration file and returns it as a dictionary 
+    """
+    filename = basefilename+".configuration"
+
+    if (os.path.isfile(filename) == False):
+        print(filename,"not found")
+        return {}
+
+    configfile = open(filename, 'r')
+    configdata = dict()
+    for i,l in enumerate(configfile):
+
+        line = l.strip()
+
+        #See if this a comment
+        if(line==""):
+            continue
+
+        if(line[0]=="#"):
+            continue
+
+        try:
+            field, value = line.replace(" ","").split('=')
+        except ValueError:
+            print("Cannot read line",i,"of",filename,"continuing")
+            continue
+
+        #See if the datatype is present
+        if("#" in value):
+            value, datatype = value.split("#")
+            try:
+                typefunc = np.dtype(datatype).type
+            except:
+                print("Cannot interpret",datatype,"for field",field,"on line",i,"in",filename,"as a valid datatype, interpreting the value as float64")
+                typefunc = np.float64
+        else:
+            typefunc = np.float64
+
+        try:
+            #Find if the value is a list of values
+            if("," in value):
+                value = value.split(",")
+
+                #Remove any empty strings
+                value = list(filter(None,value))
+                configdata[field] = np.array(value,dtype=typefunc)
+            else:
+                configdata[field] = typefunc(value)
+        except ValueError:
+            print("Cannot interpret",value,"as a",np.dtype(typefunc))
+
+    configfile.close()
+    return configdata
 
 
 def ReadParticleDataFile(basefilename, ibinary=0, iseparatesubfiles=0, iparttypes=0, iverbose=0, binarydtype=np.int64):
