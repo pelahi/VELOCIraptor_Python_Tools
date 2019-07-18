@@ -3016,8 +3016,8 @@ def WriteCombinedUnifiedTreeandHaloCatalog(fname, numsnaps, rawtree, numhalos, h
     """
 
     #Get the snapshot offset if present in the header information
-    if("HaloID_snapshot_offset" in rawtreedata["Header"]):
-        snapshotoffset = rawtreedata["Header"]["HaloID_snapshot_offset"]
+    if("HaloID_snapshot_offset" in rawtree["Header"]):
+        snapshotoffset = rawtree["Header"]["HaloID_snapshot_offset"]
     else:
         snapshotoffset = 0
 
@@ -3045,8 +3045,8 @@ def WriteCombinedUnifiedTreeandHaloCatalog(fname, numsnaps, rawtree, numhalos, h
 
     treebuildergrp = headergrp.create_group("TreeBuilder")
     treebuildergrp.attrs["Name"] = "VELOCIraptor-Tree"
-    for field in rawtreedata["Header"].keys():
-        treebuildergrp.attrs[field] = rawtreedata["Header"][field]
+    for field in rawtree["Header"].keys():
+        treebuildergrp.attrs[field] = rawtree["Header"][field]
 
     # cosmological params
     cosmogrp = headergrp.create_group("Cosmology")
@@ -3244,7 +3244,7 @@ def ReadUnifiedTreeandHaloCatalog(fname, desiredfields=[], iverbose=False, ireve
     numsnaps = hdffile[headergrpname].attrs["NSnaps"]
 
     # allocate memory
-    halodata = [dict() for i in range(snapshotoffset,snapshotoffset+numsnaps)]
+    halodata = [dict() for i in range(numsnaps)]
     numhalos = [0 for i in range(numsnaps)]
     atime = [0 for i in range(numsnaps)]
     tree = [[] for i in range(numsnaps)]
@@ -3267,18 +3267,6 @@ def ReadUnifiedTreeandHaloCatalog(fname, desiredfields=[], iverbose=False, ireve
     for fieldname in fieldnames:
         unitdata[fieldname] = hdffile[headergrpname +
                                       unitgrpname].attrs[fieldname]
-
-    #Read the header of the file
-    findergrp = headergrp.create_group("HaloFinder")
-    findergrp.attrs["Name"] = "VELOCIraptor"
-    findergrp.attrs["Version"] = descripdata["VELOCIraptor_version"]
-    findergrp.attrs["Particle_num_threshold"] = descripdata["Particle_num_threshold"]
-
-    treebuildergrp = headergrp.create_group("TreeBuilder")
-    treebuildergrp.attrs["Name"] = "VELOCIraptor-Tree"
-    for field in rawtreedata["Header"].keys():
-        treebuildergrp.attrs[field] = rawtreedata["Header"][field]
-
 
     # for each snap load the appropriate group
     start = time.clock()
