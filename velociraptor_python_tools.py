@@ -41,7 +41,7 @@ Routines for reading velociraptor output
 """
 
 
-def ReadPropertyFile(basefilename, ibinary=0, iseparatesubfiles=0, iverbose=0, desiredfields=[], isiminfo=True, iunitinfo=True):
+def ReadPropertyFile(basefilename, ibinary=0, iseparatesubfiles=0, iverbose=0, desiredfields=[], isiminfo=True, iunitinfo=True, iconfiginfo=True):
     """
     VELOCIraptor/STF files in various formats
     for example ascii format contains
@@ -74,7 +74,7 @@ def ReadPropertyFile(basefilename, ibinary=0, iseparatesubfiles=0, iverbose=0, d
         filename = basefilename+".properties"+".0"
         inompi = False
         if (os.path.isfile(filename) == False):
-            print("file not found")
+            print("Could not find VELOCIraptor file as either",basefilename+".properties or",filename)
             return []
     byteoffset = 0
     # used to store fields, their type, etc
@@ -272,23 +272,21 @@ def ReadPropertyFile(basefilename, ibinary=0, iseparatesubfiles=0, iverbose=0, d
             if (numhalos > 0):
                 catalog[catvalue][noffset:noffset+numhalos] = htemp[i]
             noffset += numhalos
-    # load associated simulation info, time and units
+    # load associated simulation info, time, units and configuration options
     if (isiminfo):
-        siminfoname = basefilename+".siminfo"
-        siminfo = open(siminfoname, 'r')
-        catalog['SimulationInfo'] = dict()
-        for l in siminfo:
-            d = l.strip().split(' : ')
-            catalog['SimulationInfo'][d[0]] = float(d[1])
-        siminfo.close()
+        if(iverbose):
+            print("reading ",basefilename+".siminfo")
+        catalog['SimulationInfo'] = ReadSimInfo(basefilename)
+
     if (iunitinfo):
-        unitinfoname = basefilename+".units"
-        unitinfo = open(unitinfoname, 'r')
-        catalog['UnitInfo'] = dict()
-        for l in unitinfo:
-            d = l.strip().split(' : ')
-            catalog['UnitInfo'][d[0]] = float(d[1])
-        unitinfo.close()
+        if(iverbose):
+            print("reading ",basefilename+".unitinfo")
+        catalog['UnitInfo'] = ReadUnitInfo(basefilename)
+
+    if (iconfiginfo):
+        if(iverbose):
+            print("reading ",basefilename+".configuration")
+        catalog['ConfigurationInfo'] = ReadConfigInfo(basefilename)
 
     if (iverbose):
         print("done reading properties file ", time.clock()-start)
@@ -334,7 +332,7 @@ def ReadHaloMergerTree(treefilename, ibinary=0, iverbose=0, imerit=False, inpart
 
     """
     start = time.clock()
-    tree = []
+    tree = {}
     if (iverbose):
         print("reading Tree file", treefilename, os.path.isfile(treefilename))
     if (os.path.isfile(treefilename) == False):
@@ -346,16 +344,35 @@ def ReadHaloMergerTree(treefilename, ibinary=0, iverbose=0, imerit=False, inpart
         numsnap = int(treefile.readline())
         treefile.close()
     elif(ibinary == 2):
+        if (iverbose):
+            print("Reading HDF5 input")
+
         snaptreelist = open(treefilename, 'r')
-        numsnap = sum(1 for line in snaptreelist)
+        snaptreename = snaptreelist.readline().strip()+".tree"
+        numsnaplist = sum(1 for line in snaptreelist) +1
+
+        treedata = h5py.File(snaptreename, "r")
+        numsnaps = treedata.attrs['Number_of_snapshots']
+
+        #Check if the treefrog number of snapshots and the number of files in the list is consistent
+        if(numsnaps!=numsnaplist):
+            print("Error, the number of snapshots reported by the TreeFrog output is different to the number of filenames supplied. \nPlease update this.")
+            return tree
+
+        #Lets extract te header information
+        tree["Header"] = dict()
+        for field in treedata.attrs.keys():
+            tree["Header"][field] = treedata.attrs[field]
+
+        treedata.close()
         snaptreelist.close()
     else:
         print("Unknown format, returning null")
         numsnap = 0
         return tree
 
-    tree = [{"haloID": [], "Num_progen": [], "Progen": []}
-            for i in range(numsnap)]
+    tree.update({i: {"haloID": [], "Num_progen": [], "Progen": []}
+            for i in range(numsnap)})
     if (imerit):
         for i in range(numsnap):
             tree[i]['Merit'] = []
@@ -413,16 +430,14 @@ def ReadHaloMergerTree(treefilename, ibinary=0, iverbose=0, imerit=False, inpart
 
     elif(ibinary == 2):
 
-        snaptreelist = open(treefilename, 'r')
-        # read the first file, get number of snaps from hdf file
-        snaptreename = snaptreelist.readline().strip()+".tree"
-        treedata = h5py.File(snaptreename, "r")
-        numsnaps = treedata.attrs['Number_of_snapshots']
-        treedata.close()
-        snaptreelist.close()
+        if("HaloID_snapshot_offset" in tree["Header"]):
+            snapshotoffset = tree["Header"]["HaloID_snapshot_offset"]
+        else:
+            print("Warning: you are using older TreeFrog output (version<=1.2) which does not contain information about which snapshot the halo catalog starts at\nAssuming that it starts at snapshot = 0.\nPlease use a TreeFrog version>1.2 if you require this feature")
+            snapshotoffset = 0
 
         snaptreelist = open(treefilename, 'r')
-        for snap in range(numsnaps):
+        for snap in range(snapshotoffset,snapshotoffset+numsnaps):
             snaptreename = snaptreelist.readline().strip()+".tree"
             if (iverbose):
                 print("Reading", snaptreename)
@@ -502,7 +517,7 @@ def ReadHaloMergerTreeDescendant(treefilename, ireverseorder=False, ibinary=0,
 
     """
     start = time.clock()
-    tree = []
+    tree = {}
     if (iverbose):
         print("reading Tree file", treefilename, os.path.isfile(treefilename))
     if (os.path.isfile(treefilename) == False):
@@ -516,12 +531,29 @@ def ReadHaloMergerTreeDescendant(treefilename, ireverseorder=False, ibinary=0,
         treefile = open(treefilename, 'r')
         numsnap = int(treefile.readline())
         treefile.close()
-    # hdf format, input file is a list of filenames
+    # hdf format, input file is a list of filenames can also extract the header info
     elif(ibinary == 2):
         if (iverbose):
             print("Reading HDF5 input")
+
         snaptreelist = open(treefilename, 'r')
-        numsnap = sum(1 for line in snaptreelist)
+        snaptreename = snaptreelist.readline().strip()+".tree"
+        numsnaplist = sum(1 for line in snaptreelist) +1
+
+        treedata = h5py.File(snaptreename, "r")
+        numsnaps = treedata.attrs['Number_of_snapshots']
+
+        #Check if the treefrog number of snapshots and the number of files in the list is consistent
+        if(numsnaps!=numsnaplist):
+            print("Error, the number of snapshots reported by the TreeFrog output is different to the number of filenames supplied. \nPlease update this.")
+            return tree
+
+        #Lets extract te header information
+        tree["Header"] = dict()
+        for field in treedata.attrs.keys():
+            tree["Header"][field] = treedata.attrs[field]
+
+        treedata.close()
         snaptreelist.close()
     else:
         print("Unknown format, returning null")
@@ -533,8 +565,9 @@ def ReadHaloMergerTreeDescendant(treefilename, ireverseorder=False, ibinary=0,
         print("Warning: Both the ireducemem and iprimarydescen are set to True. The ireducemem is not needed for iprimarydescen flag \nas it already had reduced memory footprint, due to only primiary descendants being extracted")
         ireducemem=False
 
-    tree = [{"haloID": [], "Num_descen": [], "Descen": [], "Rank": []}
-            for i in range(numsnap)]
+    #Update the dictionary with the tree information
+    tree.update({i: {"haloID": [], "Num_descen": [], "Descen": [], "Rank": []}
+            for i in range(numsnap)})
     if (imerit):
         for i in range(numsnap):
             tree[i]['Merit'] = []
@@ -613,17 +646,16 @@ def ReadHaloMergerTreeDescendant(treefilename, ireverseorder=False, ibinary=0,
     elif(ibinary == 2):
 
         snaptreelist = open(treefilename, 'r')
-        # read the first file, get number of snaps from hdf file
-        snaptreename = snaptreelist.readline().strip()+".tree"
-        treedata = h5py.File(snaptreename, "r")
-        numsnaps = treedata.attrs['Number_of_snapshots']
-        treedata.close()
-        snaptreelist.close()
-        snaptreelist = open(treefilename, 'r')
         snaptreenames=[[] for snap in range(numsnap)]
         for snap in range(numsnap):
             snaptreenames[snap] = snaptreelist.readline().strip()+".tree"
         snaptreelist.close()
+
+        if("HaloID_snapshot_offset" in tree["Header"]):
+            snapshotoffset = tree["Header"]["HaloID_snapshot_offset"]
+        else:
+            print("Warning: you are using older TreeFrog output (version<=1.2) which does not contain information about which snapshot the halo catalog starts at\nAssuming that it starts at snapshot = 0.\nPlease use a TreeFrog version>1.2 if you require this feature")
+            snapshotoffset = 0
 
         if (iverbose):
             snaptreename = snaptreenames[0]
@@ -645,7 +677,7 @@ def ReadHaloMergerTreeDescendant(treefilename, ireverseorder=False, ibinary=0,
                 print("Contains ", numhalos, "halos and will likley minimum ", memsize/1024.**3.0, "GB of memory")
                 print("Plus overhead to store list of arrays, with likely need a minimum of ",100*numhalos/1024**3.0, "GB of memory ")
             treedata.close()
-        for snap in range(numsnap):
+        for snap in range(snapshotoffset,snapshotoffset+numsnap):
             snaptreename = snaptreenames[snap]
 
             if (iverbose):
@@ -853,44 +885,175 @@ def ReadCrossCatalogList(fname, meritlim=0.1, iverbose=0):
 
 def ReadSimInfo(basefilename):
     """
-    Reads in the information in .siminfo and returns it as a dictionary
+    Reads in the information in the .siminfo file and returns it as a dictionary
     """
 
     filename = basefilename + ".siminfo"
 
     if (os.path.isfile(filename) == False):
-        print("file not found")
-        return []
+        print(filename,"not found")
+        return {}
 
     cosmodata = {}
     siminfofile = open(filename, "r")
-    line = siminfofile.readline().strip().split(" : ")
-    while(line[0] != ""):
-        cosmodata[line[0]] = float(line[1])
-        line = siminfofile.readline().strip().split(" : ")
+    for i,l in enumerate(siminfofile):
+
+        line = l.strip()
+
+        #See if this a comment
+        if(line==""):
+            continue
+
+        if(line[0]=="#"):
+            continue
+
+        try:
+            field, value = line.replace(" ","").split(':')
+        except ValueError:
+            print("Cannot read line",i,"of",filename,"continuing")
+            continue
+
+        #See if the datatype is present
+        if("#" in value):
+            value, datatype = value.split("#")
+            try:
+                typefunc = np.dtype(datatype).type
+            except:
+                print("Cannot interpret",datatype,"for field",field,"on line",i,"in",filename,"as a valid datatype, interpreting the value as float64")
+                typefunc = np.float64
+        else:
+            typefunc = np.float64
+
+        try:
+            #Find if the value is a list of values
+            if("," in value):
+                value = value.split(",")
+
+                #Remove any empty strings
+                value = list(filter(None,value))
+                cosmodata[field] = np.array(value,dtype=typefunc)
+            else:
+                cosmodata[field] = typefunc(value)
+        except ValueError:
+            print("Cannot interpret",value,"as a",np.dtype(typefunc))
+
     siminfofile.close()
     return cosmodata
 
 
 def ReadUnitInfo(basefilename):
     """
-    Reads in the information in .units and returns it as a dictionary
+    Reads in the information in the .units file and returns it as a dictionary
     """
 
     filename = basefilename + ".units"
 
     if (os.path.isfile(filename) == False):
-        print("file not found")
-        return []
+        print(filename,"not found")
+        return {}
 
-    unitdata = {}
-    unitsfile = open(filename, "r")
-    line = unitsfile.readline().strip().split(" : ")
-    while(line[0] != ""):
-        unitdata[line[0]] = float(line[1])
-        line = unitsfile.readline().strip().split(" : ")
+    unitsfile = open(filename, 'r')
+    unitdata = dict()
+    for i,l in enumerate(unitsfile):
+
+        line = l.strip()
+
+        #See if this a comment
+        if(line==""):
+            continue
+
+        if(line[0]=="#"):
+            continue
+
+        try:
+            field, value = line.replace(" ","").split(':')
+        except ValueError:
+            print("Cannot read line",i,"of",filename,"continuing")
+            continue
+
+        #See if the datatype is present
+        if("#" in value):
+            value, datatype = value.split("#")
+            try:
+                typefunc = np.dtype(datatype).type
+            except:
+                print("Cannot interpret",datatype,"for field",field,"on line",i,"in",filename,"as a valid datatype, interpreting the value as float64")
+                typefunc = np.float64
+        else:
+            typefunc = np.float64
+
+        try:
+            #Find if the value is a list of values
+            if("," in value):
+                value = value.split(",")
+
+                #Remove any empty strings
+                value = list(filter(None,value))
+                unitdata[field] = np.array(value,dtype=typefunc)
+            else:
+                unitdata[field] = typefunc(value)
+        except ValueError:
+            print("Cannot interpret",value,"as a",np.dtype(typefunc))
+
     unitsfile.close()
     return unitdata
+
+
+def ReadConfigInfo(basefilename):
+    """
+    Reads in the information in the .configuration file and returns it as a dictionary 
+    """
+    filename = basefilename+".configuration"
+
+    if (os.path.isfile(filename) == False):
+        print(filename,"not found")
+        return {}
+
+    configfile = open(filename, 'r')
+    configdata = dict()
+    for i,l in enumerate(configfile):
+
+        line = l.strip()
+
+        #See if this a comment
+        if(line==""):
+            continue
+
+        if(line[0]=="#"):
+            continue
+
+        try:
+            field, value = line.replace(" ","").split('=')
+        except ValueError:
+            print("Cannot read line",i,"of",filename,"continuing")
+            continue
+
+        #See if the datatype is present
+        if("#" in value):
+            value, datatype = value.split("#")
+            try:
+                typefunc = np.dtype(datatype).type
+            except:
+                print("Cannot interpret",datatype,"for field",field,"on line",i,"in",filename,"as a valid datatype, interpreting the value as float64")
+                typefunc = np.float64
+        else:
+            typefunc = np.float64
+
+        try:
+            #Find if the value is a list of values
+            if("," in value):
+                value = value.split(",")
+
+                #Remove any empty strings
+                value = list(filter(None,value))
+                configdata[field] = np.array(value,dtype=typefunc)
+            else:
+                configdata[field] = typefunc(value)
+        except ValueError:
+            print("Cannot interpret",value,"as a",np.dtype(typefunc))
+
+    configfile.close()
+    return configdata
 
 
 def ReadParticleDataFile(basefilename, ibinary=0, iseparatesubfiles=0, iparttypes=0, iverbose=0, binarydtype=np.int64):
@@ -1355,7 +1518,13 @@ def BuildTemporalHeadTail(numsnaps, tree, numhalos, halodata, TEMPORALHALOIDVAL=
     """
     print("Building Temporal catalog with head and tails")
     sys.stdout.flush()
-    for k in range(numsnaps):
+
+    if("HaloID_snapshot_offset" in tree["Header"]):
+        snapshotoffset = tree["Header"]["HaloID_snapshot_offset"]
+    else:
+        snapshotoffset = 0
+
+    for k in range(snapshotoffset,snapshotoffset+numsnaps):
         halodata[k]['Head'] = np.zeros(numhalos[k], dtype=np.int64)
         halodata[k]['Tail'] = np.zeros(numhalos[k], dtype=np.int64)
         halodata[k]['HeadSnap'] = np.zeros(numhalos[k], dtype=np.int32)
@@ -1395,12 +1564,12 @@ def BuildTemporalHeadTail(numsnaps, tree, numhalos, halodata, TEMPORALHALOIDVAL=
             sys.stdout.flush()
         start = time.clock()
         mphalodata = manager.list([manager.dict(halodata[k])
-                                   for k in range(numsnaps)])
+                                   for k in range(snapshotoffset,snapshotoffset+numsnaps)])
         if (iverbose > 0):
             print("done", time.clock()-start)
             sys.stdout.flush()
 
-    for istart in range(numsnaps):
+    for istart in range(snapshotoffset,snapshotoffset+numsnaps):
         if (iverbose > 0):
             print("Starting from halos at ", istart, "with", numhalos[istart])
             sys.stdout.flush()
@@ -1455,7 +1624,7 @@ def BuildTemporalHeadTail(numsnaps, tree, numhalos, halodata, TEMPORALHALOIDVAL=
             # as parallel structures have been updated
             if (iparallel == 1):
                 #tree = [dict(mptree[k]) for k in range(numsnaps)]
-                halodata = [dict(mphalodata[k]) for k in range(numsnaps)]
+                halodata = [dict(mphalodata[k]) for k in range(snapshotoffset,snapshotoffset+numsnaps)]
                 # set the iparallel flag to 0 so that all subsequent snapshots (which should have fewer objects) not run in parallel
                 # this is principly to minimize the amount of copying between manager based parallel structures and the halo/tree catalogs
                 iparallel = 0
@@ -1478,7 +1647,7 @@ def BuildTemporalHeadTail(numsnaps, tree, numhalos, halodata, TEMPORALHALOIDVAL=
     # now have walked all the main branches and set the root head, head and tail values
     # and can set the root tail of all halos. Start at end of the tree and move in reverse setting the root tail
     # of a halo's head so long as that halo's tail is the current halo (main branch)
-    for istart in range(numsnaps-1, -1, -1):
+    for istart in range(snapshotoffset+numsnaps-1, snapshotoffset-1, -1):
         for j in range(numhalos[istart]):
             # if a halo's root tail is itself then start moving up its along to its head (if its head is not itself as well
             k = istart
@@ -1618,15 +1787,25 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
     print("Building Temporal catalog with head and tails using a descendant tree")
     #store if merit present in the raw tree
     imerit=('Merit' in tree[0].keys())
-    for k in range(numsnaps):
+
+    if("HaloID_snapshot_offset" in tree["Header"]):
+        snapshotoffset = tree["Header"]["HaloID_snapshot_offset"]
+    else:
+        snapshotoffset = 0
+
+    for k in range(snapshotoffset,snapshotoffset+numsnaps):
         halodata[k]['Head'] = np.zeros(numhalos[k], dtype=np.int64)
         halodata[k]['Tail'] = np.zeros(numhalos[k], dtype=np.int64)
         halodata[k]['HeadSnap'] = np.zeros(numhalos[k], dtype=np.int32)
         halodata[k]['TailSnap'] = np.zeros(numhalos[k], dtype=np.int32)
+        halodata[k]['HeadIndex'] = np.zeros(numhalos[k], dtype=np.int64)
+        halodata[k]['TailIndex'] = np.zeros(numhalos[k], dtype=np.int64)
         halodata[k]['RootHead'] = np.zeros(numhalos[k], dtype=np.int64)
         halodata[k]['RootTail'] = np.zeros(numhalos[k], dtype=np.int64)
         halodata[k]['RootHeadSnap'] = np.zeros(numhalos[k], dtype=np.int32)
         halodata[k]['RootTailSnap'] = np.zeros(numhalos[k], dtype=np.int32)
+        halodata[k]['RootHeadIndex'] = np.zeros(numhalos[k], dtype=np.int64)
+        halodata[k]['RootTailIndex'] = np.zeros(numhalos[k], dtype=np.int64)
         halodata[k]['HeadRank'] = np.zeros(numhalos[k], dtype=np.int64)
         halodata[k]['Num_descen'] = np.zeros(numhalos[k], dtype=np.uint32)
         halodata[k]['Num_progen'] = np.zeros(numhalos[k], dtype=np.uint32)
@@ -1646,9 +1825,9 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
     start0=time.clock()
 
     if (ireverseorder):
-        snaplist = range(numsnaps-1, -1, -1)
+        snaplist = range(snapshotoffset+numsnaps-1, snapshotoffset-1, -1)
     else:
-        snaplist = range(numsnaps)
+        snaplist = range(snapshotoffset,snapshotoffset+numsnaps)
     for istart in snaplist:
         start2=time.clock()
         if (iverbose > 0):
@@ -1665,13 +1844,17 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
             halodata[istart]['RootTail'][wdata] = np.array(halodata[istart]['ID'][wdata],copy=True)
             halodata[istart]['TailSnap'][wdata] = istart*np.ones(wdata.size, dtype=np.int32)
             halodata[istart]['RootTailSnap'][wdata] = istart*np.ones(wdata.size, dtype=np.int32)
+            halodata[istart]['TailIndex'][wdata] = np.array(halodata[istart]['ID'][wdata]% TEMPORALHALOIDVAL - 1,dtype=np.int64,copy=True)
+            halodata[istart]['RootTailIndex'][wdata] = np.array(halodata[istart]['ID'][wdata]% TEMPORALHALOIDVAL - 1,dtype=np.int64,copy=True)
         #init heads to ids
         halodata[istart]['Head'] = np.array(halodata[istart]['ID'],copy=True)
-        halodata[istart]['HeadSnap'] = istart*np.ones(numhalos[istart])
+        halodata[istart]['HeadSnap'] = istart*np.ones(numhalos[istart],dtype=np.int32)
+        halodata[istart]['HeadIndex'] = np.array(halodata[istart]['ID']% TEMPORALHALOIDVAL - 1, dtype=np.int64,copy=True)
         #find all halos that have descendants and set there heads
         if (istart == numsnaps-1):
             halodata[istart]['RootHead'] = np.array(halodata[istart]['ID'],copy=True)
             halodata[istart]['RootHeadSnap'] = istart*np.ones(numhalos[istart], dtype=np.int32)
+            halodata[istart]['RootHeadIndex'] = np.array(halodata[istart]['ID']% TEMPORALHALOIDVAL - 1, dtype=np.int64,copy=True)
             continue
         wdata = None
         descencheck=(tree[istart]['Num_descen']>0)
@@ -1694,6 +1877,7 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
             halodata[istart]['HeadRank'][wdata] = np.array(ranks, copy=True)
             halodata[istart]['Head'][wdata] = np.array(descenids, copy=True)
             halodata[istart]['HeadSnap'][wdata] = np.array(descensnaps, copy=True)
+            halodata[istart]['HeadIndex'][wdata] = np.array(descenindex, copy=True)
             # showld figure out how to speed this up
             for i in range(numwithdescen):
                 isnap, idescenindex = descensnaps[i], descenindex[i]
@@ -1717,12 +1901,14 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
                         halodata[isnap]['RootTail'][idescenindex] = halodata[istart]['RootTail'][index]
                         halodata[isnap]['TailSnap'][idescenindex] = istart
                         halodata[isnap]['RootTailSnap'][idescenindex] = halodata[istart]['RootTailSnap'][index]
+                        halodata[isnap]['TailIndex'][idescenindex] = index
+                        halodata[isnap]['RootTailIndex'][idescenindex] = halodata[istart]['RootTailIndex'][index]
                     #if tail was assigned then need to compare merits and designed which one to use
                     else:
                         #if can compare merits
                         if (imerit):
                             curMerit = activemerits[i]
-                            prevTailIndex = np.int64(halodata[isnap]['Tail'][idescenindex] % TEMPORALHALOIDVAL - 1)
+                            prevTailIndex = halodata[isnap]['TailIndex'][idescenindex]
                             prevTailSnap = halodata[isnap]['TailSnap'][idescenindex]
                             compMerit = tree[prevTailSnap]['Merit'][prevTailIndex][0]
                             if (curMerit > compMerit):
@@ -1731,6 +1917,8 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
                                 halodata[isnap]['RootTail'][idescenindex] = halodata[istart]['RootTail'][index]
                                 halodata[isnap]['TailSnap'][idescenindex] = istart
                                 halodata[isnap]['RootTailSnap'][idescenindex] = halodata[istart]['RootTailSnap'][index]
+                                halodata[isnap]['TailIndex'][idescenindex] = index
+                                halodata[isnap]['RootTailIndex'][idescenindex] = halodata[istart]['RootTailIndex'][index]
                             else:
                                 halodata[istart]['HeadRank'][index]=1
                         #if merits not present then assume first connection found is better
@@ -1745,6 +1933,7 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
         if (wdata.size > 0):
             halodata[istart]['RootHead'][wdata] = np.array(halodata[istart]['ID'][wdata], copy=True)
             halodata[istart]['RootHeadSnap'][wdata] = istart*np.ones(wdata.size, dtype=np.int32)
+            halodata[istart]['RootHeadIndex'][wdata] = np.array(halodata[istart]['ID'][wdata]% TEMPORALHALOIDVAL - 1, dtype=np.int64, copy=True)
         wdata = None
         descencheck = None
         if (iverbose > 0):
@@ -1756,9 +1945,9 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
     # now have walked all the main branches and set the root tail, head and tail values
     # in case halo data is with late times at beginning need to process items in reverse
     if (ireverseorder):
-        snaplist = range(numsnaps)
+        snaplist = range(snapshotoffset,snapshotoffset+numsnaps)
     else:
-        snaplist = range(numsnaps-1, -1, -1)
+        snaplist = range(snapshotoffset+numsnaps-1, snapshotoffset-1, -1)
     # first set root heads of main branches
     for istart in snaplist:
         if (numhalos[istart] == 0):
@@ -1772,8 +1961,8 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
             continue
 
         haloidarray = halodata[istart]['Tail'][wdata]
-        haloindexarray = np.array(haloidarray % TEMPORALHALOIDVAL -1, dtype=np.int64)
-        halosnaparray = np.array((haloidarray - haloindexarray - np.int64(1)) / TEMPORALHALOIDVAL, dtype=np.int32)
+        haloindexarray = halodata[istart]['TailIndex'][wdata]
+        halosnaparray = halodata[istart]['TailSnap'][wdata]
 
         if (ireverseorder):
             halosnaparray = numsnaps - 1 - halosnaparray
@@ -1781,6 +1970,7 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
         for i in np.arange(numactive,dtype=np.int64):
             halodata[halosnaparray[i]]['RootHead'][haloindexarray[i]]=halodata[istart]['RootHead'][wdata[i]]
             halodata[halosnaparray[i]]['RootHeadSnap'][haloindexarray[i]]=halodata[istart]['RootHeadSnap'][wdata[i]]
+            halodata[halosnaparray[i]]['RootHeadIndex'][haloindexarray[i]]=halodata[istart]['RootHeadIndex'][wdata[i]]
         wdata = None
         haloidarray = None
         haloindexarray = None
@@ -1818,15 +2008,17 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
             # increase the number of progenitors of this descendant
             roothead = halodata[maindescensnap[i]]['RootHead'][maindescenindex[i]]
             rootsnap = halodata[maindescensnap[i]]['RootHeadSnap'][maindescenindex[i]]
+            rootindex = halodata[maindescensnap[i]]['RootHeadIndex'][maindescenindex[i]]
             # now set the root head for all the progenitors of this object
             while (True):
                 halodata[halosnap]['RootHead'][haloindex] = roothead
                 halodata[halosnap]['RootHeadSnap'][haloindex] = rootsnap
+                halodata[halosnap]['RootHeadIndex'][haloindex] = rootindex
                 if (haloid == halodata[halosnap]['Tail'][haloindex]):
                     break
                 haloid = halodata[halosnap]['Tail'][haloindex]
+                haloindex = halodata[halosnap]['TailIndex'][haloindex]
                 halosnap = halodata[halosnap]['TailSnap'][haloindex]
-                haloindex = np.int64(haloid % TEMPORALHALOIDVAL - 1)
         rankedhalos = None
         rankedhaloindex = None
         maindescen = None
@@ -1863,7 +2055,14 @@ def IdentifyMergers(numsnaps, tree, numhalos, halodata, boxsize, hval, atime, ME
     #todo still testing
 
     """
-    for j in range(numsnaps):
+
+    #Get the snapshot offset if present in the header information
+    if("HaloID_snapshot_offset" in tree["Header"]):
+        snapshotoffset = tree["Header"]["HaloID_snapshot_offset"]
+    else:
+        snapshotoffset = 0
+
+    for j in range(snapshotoffset,snapshotoffset+numsnaps):
         # store id and snap and mass of last major merger and while we're at it, store number of major mergers
         halodata[j]["LastMerger"] = np.ones(numhalos[j], dtype=np.int64)*-1
         halodata[j]["LastMergerRatio"] = np.ones(
@@ -1874,12 +2073,12 @@ def IdentifyMergers(numsnaps, tree, numhalos, halodata, boxsize, hval, atime, ME
         #halodata[j]["NumMergers"] = np.zeros(numhalos[j], dtype = np.uint32)
     # built KD tree to quickly search for near neighbours
     if (len(pos_tree) == 0):
-        pos = [[]for j in range(numsnaps)]
-        pos_tree = [[]for j in range(numsnaps)]
+        pos = [[]for j in range(snapshotoffset,snapshotoffset+numsnaps)]
+        pos_tree = [[]for j in range(snapshotoffset,snapshotoffset+numsnaps)]
         start = time.clock()
         if (iverbose):
             print("tree build")
-        for j in range(numsnaps):
+        for j in range(snapshotoffset,snapshotoffset+numsnaps):
             if (numhalos[j] > 0):
                 boxval = boxsize*atime[j]/hval
                 pos[j] = np.transpose(np.asarray(
@@ -1888,7 +2087,7 @@ def IdentifyMergers(numsnaps, tree, numhalos, halodata, boxsize, hval, atime, ME
         if (iverbose):
             print("done ", time.clock()-start)
     # else assume tree has been passed
-    for j in range(numsnaps):
+    for j in range(snapshotoffset,snapshotoffset+numsnaps):
         if (numhalos[j] == 0):
             continue
         # at snapshot look at all haloes that have not had a major merger set
@@ -2113,7 +2312,14 @@ def GenerateSubhaloLinks(numsnaps, numhalos, halodata, TEMPORALHALOIDVAL=1000000
     - the halodata dictionary structure which must contain the halo merger tree based keys, Head, RootHead, etc, and mass, phase-space positions of haloes,
     and other desired properties
     """
-    for j in range(numsnaps):
+    #Get the snapshot offset if present in the header information
+    if("HaloID_snapshot_offset" in halodata["Header"]):
+        snapshotoffset = halodata["Header"]["HaloID_snapshot_offset"]
+    else:
+        snapshotoffset = 0
+
+
+    for j in range(snapshotoffset,snapshotoffset+numsnaps):
         # store id and snap and mass of last major merger and while we're at it, store number of major mergers
         halodata[j]["NextSubhalo"] = copy.deepcopy(halodata[j]["ID"])
         halodata[j]["PreviousSubhalo"] = copy.deepcopy(halodata[j]["ID"])
@@ -2164,7 +2370,13 @@ def GenerateProgenitorLinks(numsnaps, numhalos, halodata, ireversesnaporder=Fals
         nsnapsearch = numsnaps-1
         print("Warning, number of snaps < search size, reducing search size to numsnaps-1 = ", nsnapsearch)
 
-    for j in range(numsnaps):
+    #Get the snapshot offset if present in the header information
+    if("HaloID_snapshot_offset" in halodata["Header"]):
+        snapshotoffset = halodata["Header"]["HaloID_snapshot_offset"]
+    else:
+        snapshotoffset = 0
+
+    for j in range(snapshotoffset,snapshotoffset+numsnaps):
         # store id and snap and mass of last major merger and while we're at it, store number of major mergers
         halodata[j]["LeftTail"] = copy.deepcopy(halodata[j]["ID"])
         halodata[j]["RightTail"] = copy.deepcopy(halodata[j]["ID"])
@@ -2300,8 +2512,14 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
 
     """
 
+        #Get the snapshot offset if present in the header information
+    if("HaloID_snapshot_offset" in halodata["Header"]):
+        snapshotoffset = halodata["Header"]["HaloID_snapshot_offset"]
+    else:
+        snapshotoffset = 0
+
     # initialize the dictionaries
-    for j in range(numsnaps):
+    for j in range(snapshotoffset,snapshotoffset+numsnaps):
         # store id and snap and mass of last major merger and while we're at it, store number of major mergers
         halodata[j]["ForestID"] = np.ones(numhalos[j], dtype=np.int64)*-1
         halodata[j]["ForestLevel"] = np.ones(numhalos[j], dtype=np.int32)*-1
@@ -2311,13 +2529,13 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
         boxsize = cosmo['BoxSize']
         hval = cosmo['Hubble_param']
         if (len(pos_tree) == 0):
-            pos = [[]for j in range(numsnaps)]
-            pos_tree = [[]for j in range(numsnaps)]
+            pos = [[]for j in range(snapshotoffset,snapshotoffset+numsnaps)]
+            pos_tree = [[]for j in range(snapshotoffset,snapshotoffset+numsnaps)]
             start = time.clock()
             if (iverbose):
                 print("KD tree build")
                 sys.stdout.flush()
-            for j in range(numsnaps):
+            for j in range(snapshotoffset,snapshotoffset+numsnaps):
                 if (numhalos[j] > 0):
                     boxval = boxsize*atime[j]/hval
                     pos[j] = np.transpose(np.asarray(
@@ -2332,7 +2550,7 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
     # and all progenitors and group them together into the same forest id
     forestidval = 1
     start = time.clock()
-    # for j in range(numsnaps):
+    # for j in range(snapshotoffset,snapshotoffset+numsnaps):
     # set the direction of how the data will be processed
     if (ireversesnaporder):
         snaplist = np.arange(0, numsnaps, dtype=np.int32)
@@ -2356,7 +2574,7 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
 
     # get initial size of each forest where forests are grouped by halo+subhalo relation
     ForestIDs, ForestSize = np.unique(np.concatenate(
-        [halodata[i]['ForestID'] for i in range(numsnaps)]), return_counts=True)
+        [halodata[i]['ForestID'] for i in range(snapshotoffset,snapshotoffset+numsnaps)]), return_counts=True)
     numforests = len(ForestIDs)
     maxforest = np.max(ForestSize)
     print('finished first pass', time.clock()-start2,
@@ -2382,10 +2600,9 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
         if (iverbose):
             print('walking forward in time to identify forest id mappings')
             sys.stdout.flush()
+        snaplist = np.arange(numsnaps,dtype=np.int32)
         if (ireversesnaporder):
-            snaplist = np.arange(0, numsnaps-1, dtype=np.int32)[::-1]
-        else:
-            snaplist = np.arange(numsnaps-1, 0, -1)[::-1]
+            snaplist = snaplist[::-1]
         for j in snaplist:
             if (numhalos[j] == 0):
                 continue
@@ -2438,7 +2655,7 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
             sys.stdout.flush()
         # update forest ids using map
         start2 = time.clock()
-        for j in range(numsnaps):
+        for j in range(snapshotoffset,snapshotoffset+numsnaps):
             if (numhalos[j] == 0):
                 continue
             for ihalo in range(numhalos[j]):
@@ -2450,14 +2667,14 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
             sys.stdout.flush()
         numloops += 1
 
-    print('Done secondary progenitor/descendant linking clean up between forests in %d in a time of %f' %
+    print('Done forests in %d in a time of %f' %
           (numloops, time.clock()-start1))
     sys.stdout.flush()
 
 
     # get the size of each forest
     ForestIDs, ForestSize = np.unique(np.concatenate(
-        [halodata[i]['ForestID'] for i in range(numsnaps)]), return_counts=True)
+        [halodata[i]['ForestID'] for i in range(snapshotoffset,snapshotoffset+numsnaps)]), return_counts=True)
     numforests = ForestIDs.size
     maxforest = np.max(ForestSize)
     foreststats = np.percentile(ForestSize,[16.0,50.0,84.0,95.0,99.0,99.5])
@@ -2468,7 +2685,7 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
     ForestSizeStats['Number_of_forests'] = numforests
     ForestSizeStats['Largest_forest_size'] = maxforest
     ForestSizeStats['Snapshots'] = dict()
-    for i in range(numsnaps):
+    for i in range(snapshotoffset,snapshotoffset+numsnaps):
         ForestSizeStats['Snapshots']['Snap_%03d' %
                                      i] = np.zeros(numforests, dtype=np.int64)
         if (numhalos[i] == 0):
@@ -2499,12 +2716,12 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
         if (nomatchsubs > 0):
             print('ERROR, forest ids show mistmatches between subs and hosts',nomatchsubs)
             print('Returning null and reseting forest ids')
-            for j in range(numsnaps):
+            for j in range(snapshotoffset,snapshotoffset+numsnaps):
                 halodata[j]["ForestID"] = np.ones(numhalos[j], dtype=np.int64)*-1
                 halodata[j]["ForestLevel"] = np.ones(numhalos[j], dtype=np.int32)*-1
             return []
         numheadtailmismatch = 0
-        for j in range(numsnaps):
+        for j in range(snapshotoffset,snapshotoffset+numsnaps):
             if (numhalos[j] == 0):
                 continue
             if (ireversesnaporder):
@@ -2525,7 +2742,7 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
         if (numheadtailmismatch > 0):
             print('ERROR, forest ids show mistmatches between head/tail',numheadtailmismatch)
             print('Returning null and reseting forest ids')
-            for j in range(numsnaps):
+            for j in range(snapshotoffset,snapshotoffset+numsnaps):
                 halodata[j]["ForestID"] = np.ones(numhalos[j], dtype=np.int64)*-1
                 halodata[j]["ForestLevel"] = np.ones(numhalos[j], dtype=np.int32)*-1
             return []
@@ -2575,9 +2792,15 @@ def AdjustforPeriod(numsnaps, numhalos, halodata, SimInfo={}):
 
     """
 
+    #Get the snapshot offset if present in the header information
+    if("HaloID_snapshot_offset" in halodata["Header"]):
+        snapshotoffset = halodata["Header"]["HaloID_snapshot_offset"]
+    else:
+        snapshotoffset = 0
+
     boxval=np.zeros(numsnaps)
     if (all(key in halodata[0].keys() for key in ['UnitInfo','SimulationInfo'])):
-        for i in range(numsnaps):
+        for i in range(snapshotoffset,snapshotoffset+numsnaps):
             if (numhalos[i] == 0):
                 continue
             icomove=halodata[i]["UnitInfo"]["Comoving_or_Physical"]
@@ -2587,7 +2810,7 @@ def AdjustforPeriod(numsnaps, numhalos, halodata, SimInfo={}):
                 boxval[i] = halodata[i]["SimulationInfo"]["Period"]
     elif (all(key in SimInfo.keys() for key in ['Comoving', 'BoxSize', 'h_val', 'ScaleFactor'])):
         icomove=SimInfo["Comoving"]
-        for i in range(numsnaps):
+        for i in range(snapshotoffset,snapshotoffset+numsnaps):
             if (icomove):
                 boxval[i] = SimInfo["Boxsize"]
             else:
@@ -2597,7 +2820,7 @@ def AdjustforPeriod(numsnaps, numhalos, halodata, SimInfo={}):
         print('Missing Info to map positions, doing nothing')
         return
 
-    for i in range(numsnaps):
+    for i in range(snapshotoffset,snapshotoffset+numsnaps):
         for key in ['Xc','Yc','Zc']:
             wdata = np.where(halodata[i][key] < 0)
             halodata[i][key][wdata] += boxval[i]
@@ -2610,7 +2833,14 @@ def AdjustComove(itocomovefromphysnumsnaps, numsnaps, numhalos, atime, halodata,
     """
     Convert distances to/from physical from/to comoving
     """
-    for i in range(numsnaps):
+
+    #Get the snapshot offset if present in the header information
+    if("HaloID_snapshot_offset" in halodata["Header"]):
+        snapshotoffset = halodata["Header"]["HaloID_snapshot_offset"]
+    else:
+        snapshotoffset = 0
+
+    for i in range(snapshotoffset,snapshotoffset+numsnaps):
         if (numhalos[i] == 0):
             continue
         # converting from physical to comoving
@@ -2686,6 +2916,13 @@ def WriteUnifiedTreeandHaloCatalog(fname, numsnaps, rawtreedata, numhalos, halod
     \todo don't know if I should use multiprocessing here to write files in parallel. IO might not be ideal
 
     """
+
+    #Get the snapshot offset if present in the header information
+    if("HaloID_snapshot_offset" in rawtreedata["Header"]):
+        snapshotoffset = rawtreedata["Header"]["HaloID_snapshot_offset"]
+    else:
+        snapshotoffset = 0
+
     # check to see in tree data already present in halo catalog
     treekeys = ["RootHead", "RootHeadSnap",
                 "Head", "HeadSnap",
@@ -2732,9 +2969,8 @@ def WriteUnifiedTreeandHaloCatalog(fname, numsnaps, rawtreedata, numhalos, halod
 
     treebuildergrp = headergrp.create_group("TreeBuilder")
     treebuildergrp.attrs["Name"] = descripdata["TreeBuilder"]
-    treebuildergrp.attrs["Version"] = descripdata["TreeBuilder_version"]
-    treebuildergrp.attrs["Temporal_linking_length"] = descripdata["Temporal_linking_length"]
-    treebuildergrp.attrs["Temporal_halo_id_value"] = descripdata["Temporal_halo_id_value"]
+    for field in rawtreedata["Header"].keys():
+        treebuildergrp.attrs[field] = rawtreedata["Header"][field]
 
 
     # simulation params
@@ -2754,7 +2990,7 @@ def WriteUnifiedTreeandHaloCatalog(fname, numsnaps, rawtreedata, numhalos, halod
     for key in partdata['Particle_mass'].keys():
         partmassgrp.attrs[key] = partdata['Particle_mass'][key]
 
-    for i in range(numsnaps):
+    for i in range(snapshotoffset,snapshotoffset+numsnaps):
 
         if (ireversesnaporder == True):
             snapnum=(numsnaps-1-i)
@@ -2794,6 +3030,12 @@ def WriteCombinedUnifiedTreeandHaloCatalog(fname, numsnaps, rawtree, numhalos, h
 
     """
 
+    #Get the snapshot offset if present in the header information
+    if("HaloID_snapshot_offset" in rawtree["Header"]):
+        snapshotoffset = rawtree["Header"]["HaloID_snapshot_offset"]
+    else:
+        snapshotoffset = 0
+
     if (ibuildheadtail == 1):
         BuildTemporalHeadTail(numsnaps, rawtree, numhalos, halodata)
     if (ibuildmajormergers == 1):
@@ -2818,8 +3060,8 @@ def WriteCombinedUnifiedTreeandHaloCatalog(fname, numsnaps, rawtree, numhalos, h
 
     treebuildergrp = headergrp.create_group("TreeBuilder")
     treebuildergrp.attrs["Name"] = "VELOCIraptor-Tree"
-    treebuildergrp.attrs["Version"] = descripdata["Tree_version"]
-    treebuildergrp.attrs["Temporal_linking_length"] = descripdata["Temporal_linking_length"]
+    for field in rawtree["Header"].keys():
+        treebuildergrp.attrs[field] = rawtree["Header"][field]
 
     # cosmological params
     cosmogrp = headergrp.create_group("Cosmology")
@@ -2844,7 +3086,7 @@ def WriteCombinedUnifiedTreeandHaloCatalog(fname, numsnaps, rawtree, numhalos, h
     treekeys = ["RootHead", "RootHeadSnap", "Head", "HeadSnap",
                 "Tail", "TailSnap", "RootTail", "RootTailSnap", "Num_progen"]
 
-    for i in range(numsnaps):
+    for i in range(snapshotoffset,snapshotoffset+numsnaps):
         # note that I normally have information in reverse order so that might be something in the units
         snapgrp = snapsgrp.create_group("Snap_%03d" % (numsnaps-1-i))
         snapgrp.attrs["Snapnum"] = i
@@ -2893,38 +3135,38 @@ def WriteCombinedUnifiedTreeandHaloCatalog(fname, numsnaps, rawtree, numhalos, h
     tothalos = sum(numhalos)
     tdata = np.zeros(tothalos, dtype=halodata[0]["ID"].dtype)
     count = 0
-    for i in range(numsnaps):
+    for i in range(snapshotoffset,snapshotoffset+numsnaps):
         tdata[count:int(numhalos[i])+count] = halodata[i]["ID"]
         count += int(numhalos[i])
     treegrp.create_dataset("HaloSnapID", data=tdata)
     tdata = np.zeros(tothalos, dtype=np.uint32)
     count = 0
-    for i in range(numsnaps):
+    for i in range(snapshotoffset,snapshotoffset+numsnaps):
         tdata[count:int(numhalos[i])+count] = i
         count += int(numhalos[i])
     treegrp.create_dataset("HaloSnapNum", data=tdata)
     tdata = np.zeros(tothalos, dtype=np.uint64)
     count = 0
-    for i in range(numsnaps):
+    for i in range(snapshotoffset,snapshotoffset+numsnaps):
         tdata[count:int(numhalos[i])+count] = range(int(numhalos[i]))
         count += int(numhalos[i])
     treegrp.create_dataset("HaloSnapIndex", data=tdata)
     # store progenitors
     tdata = np.zeros(tothalos, dtype=halodata[0]["Tail"].dtype)
     count = 0
-    for i in range(numsnaps):
+    for i in range(snapshotoffset,snapshotoffset+numsnaps):
         tdata[count:int(numhalos[i])+count] = halodata[i]["Tail"]
         count += int(numhalos[i])
     treegrp.create_dataset("ProgenitorID", data=tdata)
     tdata = np.zeros(tothalos, dtype=halodata[0]["TailSnap"].dtype)
     count = 0
-    for i in range(numsnaps):
+    for i in range(snapshotoffset,snapshotoffset+numsnaps):
         tdata[count:int(numhalos[i])+count] = halodata[i]["TailSnap"]
         count += int(numhalos[i])
     treegrp.create_dataset("ProgenitorSnapnum", data=tdata)
     tdata = np.zeros(tothalos, dtype=np.uint64)
     count = 0
-    for i in range(numsnaps):
+    for i in range(snapshotoffset,snapshotoffset+numsnaps):
         tdata[count:int(numhalos[i])+count] = (halodata[i]
                                                ["Tail"] % TEMPORALHALOIDVAL-1)
         count += int(numhalos[i])
@@ -2932,19 +3174,19 @@ def WriteCombinedUnifiedTreeandHaloCatalog(fname, numsnaps, rawtree, numhalos, h
     # store descendants
     tdata = np.zeros(tothalos, dtype=halodata[0]["Head"].dtype)
     count = 0
-    for i in range(numsnaps):
+    for i in range(snapshotoffset,snapshotoffset+numsnaps):
         tdata[count:int(numhalos[i])+count] = halodata[i]["Head"]
         count += int(numhalos[i])
     treegrp.create_dataset("DescendantID", data=tdata)
     tdata = np.zeros(tothalos, dtype=halodata[0]["HeadSnap"].dtype)
     count = 0
-    for i in range(numsnaps):
+    for i in range(snapshotoffset,snapshotoffset+numsnaps):
         tdata[count:int(numhalos[i])+count] = halodata[i]["HeadSnap"]
         count += int(numhalos[i])
     treegrp.create_dataset("DescendantSnapnum", data=tdata)
     tdata = np.zeros(tothalos, dtype=np.uint64)
     count = 0
-    for i in range(numsnaps):
+    for i in range(snapshotoffset,snapshotoffset+numsnaps):
         tdata[count:int(numhalos[i])+count] = (halodata[i]
                                                ["Head"] % TEMPORALHALOIDVAL-1)
         count += int(numhalos[i])
@@ -2952,19 +3194,19 @@ def WriteCombinedUnifiedTreeandHaloCatalog(fname, numsnaps, rawtree, numhalos, h
     # store progenitors
     tdata = np.zeros(tothalos, dtype=halodata[0]["RootTail"].dtype)
     count = 0
-    for i in range(numsnaps):
+    for i in range(snapshotoffset,snapshotoffset+numsnaps):
         tdata[count:int(numhalos[i])+count] = halodata[i]["RootTail"]
         count += int(numhalos[i])
     treegrp.create_dataset("RootProgenitorID", data=tdata)
     tdata = np.zeros(tothalos, dtype=halodata[0]["RootTailSnap"].dtype)
     count = 0
-    for i in range(numsnaps):
+    for i in range(snapshotoffset,snapshotoffset+numsnaps):
         tdata[count:int(numhalos[i])+count] = halodata[i]["RootTailSnap"]
         count += int(numhalos[i])
     treegrp.create_dataset("RootProgenitorSnapnum", data=tdata)
     tdata = np.zeros(tothalos, dtype=np.uint64)
     count = 0
-    for i in range(numsnaps):
+    for i in range(snapshotoffset,snapshotoffset+numsnaps):
         tdata[count:int(numhalos[i])+count] = (halodata[i]
                                                ["RootTail"] % TEMPORALHALOIDVAL-1)
         count += int(numhalos[i])
@@ -2972,19 +3214,19 @@ def WriteCombinedUnifiedTreeandHaloCatalog(fname, numsnaps, rawtree, numhalos, h
     # store descendants
     tdata = np.zeros(tothalos, dtype=halodata[0]["RootHead"].dtype)
     count = 0
-    for i in range(numsnaps):
+    for i in range(snapshotoffset,snapshotoffset+numsnaps):
         tdata[count:int(numhalos[i])+count] = halodata[i]["RootHead"]
         count += int(numhalos[i])
     treegrp.create_dataset("RootDescendantID", data=tdata)
     tdata = np.zeros(tothalos, dtype=halodata[0]["RootHeadSnap"].dtype)
     count = 0
-    for i in range(numsnaps):
+    for i in range(snapshotoffset,snapshotoffset+numsnaps):
         tdata[count:int(numhalos[i])+count] = halodata[i]["RootHeadSnap"]
         count += int(numhalos[i])
     treegrp.create_dataset("RootDescendantSnapnum", data=tdata)
     tdata = np.zeros(tothalos, dtype=np.uint64)
     count = 0
-    for i in range(numsnaps):
+    for i in range(snapshotoffset,snapshotoffset+numsnaps):
         tdata[count:int(numhalos[i])+count] = (halodata[i]
                                                ["RootHead"] % TEMPORALHALOIDVAL-1)
         count += int(numhalos[i])
@@ -2992,7 +3234,7 @@ def WriteCombinedUnifiedTreeandHaloCatalog(fname, numsnaps, rawtree, numhalos, h
     # store number of progenitors
     tdata = np.zeros(tothalos, dtype=np.uint32)
     count = 0
-    for i in range(numsnaps):
+    for i in range(snapshotoffset,snapshotoffset+numsnaps):
         tdata[count:int(numhalos[i])+count] = halodata[i]["Num_progen"]
         count += int(numhalos[i])
     treegrp.create_dataset("NProgen", data=tdata)
@@ -3101,19 +3343,23 @@ def WriteWalkableHDFTree(fname, numsnaps, tree, numhalos, halodata, atime,
     headergrp.attrs["NSnaps"] = numsnaps
     # overall description
     headergrp.attrs["Title"] = descripdata["Title"]
-    treebuildergrp = headergrp.create_group("TreeBuilder")
-    treebuildergrp.attrs["Name"] = descripdata["TreeBuilder"]
-    treebuildergrp.attrs["Version"] = descripdata["TreeBuilder_version"]
-    treebuildergrp.attrs["Temporal_linking_length"] = descripdata["Temporal_linking_length"]
-    treebuildergrp.attrs["Temporal_halo_id_value"] = descripdata["Temporal_halo_id_value"]
+
+    #write all the header info
+    for field in tree["Header"]:
+        headergrp.attrs[field] = tree["Header"][field]
 
     # now need to create groups for halos and then a group containing tree information
     snapsgrp = hdffile.create_group("Snapshots")
     # tree keys of interest
-    halokeys = ["RootHead", "RootHeadSnap", "Head", "HeadSnap", "Tail",
-                "TailSnap", "RootTail", "RootTailSnap", "ID", "Num_progen"]
+    halokeys = ["RootHead", "RootHeadSnap", "RootHeadIndex", "Head", "HeadSnap", "HeadIndex", "Tail",
+                "TailSnap", "TailIndex", "RootTail", "RootTailSnap", "RootTailIndex", "ID", "Num_progen"]
 
-    for i in range(numsnaps):
+    if("HaloID_snapshot_offset" in tree["Header"]):
+        snapshotoffset = tree["Header"]["HaloID_snapshot_offset"]
+    else:
+        snapshotoffset = 0
+
+    for i in range(snapshotoffset,snapshotoffset+numsnaps):
         # note that I normally have information in reverse order so that might be something in the units
         snapgrp = snapsgrp.create_group("Snap_%03d" % i)
         snapgrp.attrs["Snapnum"] = i
@@ -3135,12 +3381,26 @@ def ReadWalkableHDFTree(fname, iverbose=True):
     Returns the halos IDs with walkable tree data, number of snaps, and the number of snapshots searched.
     """
     hdffile = h5py.File(fname, 'r')
+
+    #Read the header information
     numsnaps = hdffile['Header'].attrs["NSnaps"]
     #nsnapsearch = ["Header/TreeBuilder"].attrs["Temporal_linking_length"]
+
     if (iverbose):
         print("number of snaps", numsnaps)
-    halodata = [dict() for i in range(numsnaps)]
-    for i in range(numsnaps):
+    halodata = {i:dict() for i in range(numsnaps)}
+
+    halodata["Header"] = dict()
+    for field in hdffile["Header"].attrs.keys():
+        halodata["Header"][field] = hdffile["Header"].attrs[field]
+
+    #Get the snapshot offset if present
+    if("HaloID_snapshot_offset" in halodata["Header"]):
+        snapshotoffset = halodata["Header"]["HaloID_snapshot_offset"]
+    else:
+        snapshotoffset = 0
+
+    for i in range(snapshotoffset,snapshotoffset+numsnaps):
         # note that I normally have information in reverse order so that might be something in the units
         if (iverbose):
             print("snap ", i)
