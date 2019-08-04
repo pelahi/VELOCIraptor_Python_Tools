@@ -541,10 +541,10 @@ def ReadHaloMergerTreeDescendant(treefilename, ireverseorder=False, ibinary=0,
         numsnaplist = sum(1 for line in snaptreelist) +1
 
         treedata = h5py.File(snaptreename, "r")
-        numsnaps = treedata.attrs['Number_of_snapshots']
+        numsnap = treedata.attrs['Number_of_snapshots']
 
         #Check if the treefrog number of snapshots and the number of files in the list is consistent
-        if(numsnaps!=numsnaplist):
+        if(numsnap!=numsnaplist):
             print("Error, the number of snapshots reported by the TreeFrog output is different to the number of filenames supplied. \nPlease update this.")
             return tree
 
@@ -2002,8 +2002,9 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
                 if (haloid == halodata[halosnap]['Tail'][haloindex]):
                     break
                 haloid = halodata[halosnap]['Tail'][haloindex]
-                haloindex = halodata[halosnap]['TailIndex'][haloindex]
+                tmphaloindex = halodata[halosnap]['TailIndex'][haloindex]
                 halosnap = halodata[halosnap]['TailSnap'][haloindex]
+                haloindex = tmphaloindex
         rankedhalos = None
         rankedhaloindex = None
         maindescen = None
