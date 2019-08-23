@@ -1779,6 +1779,11 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
         snapshotoffset = 0
 
     for k in range(snapshotoffset,snapshotoffset+numsnaps):
+
+        #Set the VELOCIraptor ID to point to the TreeFrog ID
+        halodata[k]["ID"] = tree[k]["haloID"]
+
+        #Intialize the rest of the dataset
         halodata[k]['Head'] = np.zeros(numhalos[k], dtype=np.int64)
         halodata[k]['Tail'] = np.zeros(numhalos[k], dtype=np.int64)
         halodata[k]['HeadSnap'] = np.zeros(numhalos[k], dtype=np.int32)
