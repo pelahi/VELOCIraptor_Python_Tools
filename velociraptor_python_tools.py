@@ -538,15 +538,9 @@ def ReadHaloMergerTreeDescendant(treefilename, ireverseorder=False, ibinary=0,
 
         snaptreelist = open(treefilename, 'r')
         snaptreename = snaptreelist.readline().strip()+".tree"
-        numsnaplist = sum(1 for line in snaptreelist) +1
+        numsnap = sum(1 for line in snaptreelist) +1
 
         treedata = h5py.File(snaptreename, "r")
-        numsnap = treedata.attrs['Number_of_snapshots']
-
-        #Check if the treefrog number of snapshots and the number of files in the list is consistent
-        if(numsnap!=numsnaplist):
-            print("Error, the number of snapshots reported by the TreeFrog output is different to the number of filenames supplied. \nPlease update this.")
-            return tree
 
         #Lets extract te header information
         tree["Header"] = dict()
