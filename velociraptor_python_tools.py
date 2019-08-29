@@ -1017,10 +1017,13 @@ def ReadConfigInfo(basefilename):
             continue
 
         try:
-            field, value = line.replace(" ","").split('=')
+            field, value = line.replace(" ","").split(':')
         except ValueError:
-            print("Cannot read line",i,"of",filename,"continuing")
-            continue
+            try:
+                field, value = line.replace(" ","").split('=')
+            except ValueError:
+                print("Cannot read line",i,"of",filename,"continuing")
+                continue
 
         #See if the datatype is present
         if("#" in value):
