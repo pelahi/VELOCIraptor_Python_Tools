@@ -3597,10 +3597,10 @@ def WriteWalkableHDFTree(fname, numsnaps, tree, numhalos, halodata, atime,
     #write all the header info
     for field in tree["Header"]:
         headergrp.attrs[field] = tree["Header"][field]
-    treebuildergrp = hdffile.create_group("TreeBuilder")
+    treebuildergrp = headergrp.create_group("TreeBuilder")
     for field in descripdata['TreeBuilder']:
         treebuildergrp.attrs[field] = descripdata['TreeBuilder'][field]
-    halofindergrp = hdffile.create_group("HaloFinder")
+    halofindergrp = headergrp.create_group("HaloFinder")
     for field in descripdata['HaloFinder']:
         halofindergrp.attrs[field] = descripdata['HaloFinder'][field]
 
