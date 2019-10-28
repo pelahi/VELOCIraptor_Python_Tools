@@ -3050,11 +3050,17 @@ def WriteUnifiedTreeandHaloCatalog(fname, numsnaps, rawtreedata, numhalos, halod
 def WriteForest(basename, numsnaps,
     numhalos, halodata, forestdata, atime,
     descripdata={'Title': 'Halo Forest',
-    'HaloFinder' : {'Name': 'VELOCIraptor', 'Version': 1.15,
-        'Particle_num_threshold': 20,
+        'HaloFinder' : {
+            'Name': 'VELOCIraptor',
+            'Version': 1.15,
+            'Particle_num_threshold': 20,
         },
-    'TreeBuilder': {'Name': 'TreeFrog', 'Version': 1.1, 'Temporal_linking_length': 1,
-        'Temporal_ID': 1000000000000,},
+        'TreeBuilder': {
+            'Name': 'TreeFrog',
+            'Version': 1.1,
+            'Temporal_linking_length': 1,
+            'Temporal_ID': 1000000000000,
+        },
         },
     simdata={'Omega_m': 1.0, 'Omega_b': 0., 'Omega_Lambda':0., 'Hubble_param': 1.0, 'BoxSize': 1.0, 'Sigma8': 1.0},
     unitdata={'UnitLength_in_Mpc': 1.0, 'UnitVelocity_in_kms': 1.0, 'UnitMass_in_Msol': 1.0, 'Flag_physical_comoving': True, 'Flag_hubble_flow': False},
@@ -3540,9 +3546,21 @@ def ReadUnifiedTreeandHaloCatalog(fname, desiredfields=[], iverbose=False, ireve
 
 
 def WriteWalkableHDFTree(fname, numsnaps, tree, numhalos, halodata, atime,
-                         descripdata={'Title': 'Tree catalogue', 'TreeBuilder': 'TreeFrog', 'TreeBuilder_version': 1.2,
-                                      'Particle_num_threshold': 20, 'Temporal_linking_length': 1, 'Temporal_halo_id_value':1000000000000}
-                         ):
+        descripdata={
+        'Title':'Walkable Tree',
+        'TreeBuilder' : {
+            'Name' : 'TreeFrog',
+            'Version' : 1,
+            'Temporal_linking_length' : 1,
+            'Temporal_halo_id_value' : 1000000000000,
+        },
+        'HaloFinder' : {
+            'Name' : 'VELOCIraptor',
+            'Version' : 1,
+            'Particle_num_threshold' : 20,
+            },
+        }
+        ):
     """
     Produces a HDF5 formatted file containing Reduced Walkable Tree information,
     ie; RootHead, Head, HeadSnap, Tail, RootTail, etc.
@@ -3579,6 +3597,12 @@ def WriteWalkableHDFTree(fname, numsnaps, tree, numhalos, halodata, atime,
     #write all the header info
     for field in tree["Header"]:
         headergrp.attrs[field] = tree["Header"][field]
+    treebuildergrp = hdffile.create_group("TreeBuilder")
+    for field in descripdata['TreeBuilder']:
+        treebuildergrp.attrs[field] = descripdata['TreeBuilder'][field]
+    halofindergrp = hdffile.create_group("HaloFinder")
+    for field in descripdata['HaloFinder']:
+        halofindergrp.attrs[field] = descripdata['HaloFinder'][field]
 
     # now need to create groups for halos and then a group containing tree information
     snapsgrp = hdffile.create_group("Snapshots")
