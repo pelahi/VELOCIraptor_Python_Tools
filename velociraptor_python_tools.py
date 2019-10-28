@@ -3644,7 +3644,7 @@ def ReadWalkableHDFTree(fname, iverbose=True):
 
     if (iverbose):
         print("number of snaps", numsnaps)
-    treedata = {i:dict() for i in range(numsnaps)}
+    treedata = dict()
 
     treedata["Header"] = dict()
     for field in hdffile["Header"].attrs.keys():
@@ -3662,15 +3662,15 @@ def ReadWalkableHDFTree(fname, iverbose=True):
     else:
         snapshotoffset = 0
 
+    treedata['Snapshots'] = {i:dict() for i in range(numsnaps)}
     for i in range(snapshotoffset,snapshotoffset+numsnaps):
         # note that I normally have information in reverse order so that might be something in the units
         if (iverbose):
             print("snap ", i)
         for key in hdffile['Snapshots']['Snap_%03d' % i].keys():
-            treedata[i][key] = np.array(
+            treedata['Snapshots'][i][key] = np.array(
                 hdffile['Snapshots']['Snap_%03d' % i][key])
     hdffile.close()
-    # , nsnapsearch
     return treedata, numsnaps
 
 
