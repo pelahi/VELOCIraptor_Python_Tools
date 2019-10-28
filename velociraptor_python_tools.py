@@ -3649,6 +3649,12 @@ def ReadWalkableHDFTree(fname, iverbose=True):
     treedata["Header"] = dict()
     for field in hdffile["Header"].attrs.keys():
         treedata["Header"][field] = hdffile["Header"].attrs[field]
+    treedata["Header"]['TreeBuilder'] = dict()
+    for field in hdffile["Header"]['TreeBuilder'].attrs.keys():
+        treedata["Header"]['TreeBuilder'][field] = hdffile["Header"]['TreeBuilder'].attrs[field]
+    treedata["Header"]['HaloFinder'] = dict()
+    for field in hdffile["Header"]['HaloFinder'].attrs.keys():
+        treedata["Header"]['HaloFinder'][field] = hdffile["Header"]['HaloFinder'].attrs[field]
 
     #Get the snapshot offset if present
     if("HaloID_snapshot_offset" in treedata["Header"]):
