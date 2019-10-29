@@ -3153,7 +3153,7 @@ def WriteForest(basename, numsnaps,
     print('Writing forest statistics to ', fname)
     totnumhalos = sum(numhalos)
     totactivehalos = totnumhalos
-    hdffile = h5py.File(, 'w')
+    hdffile = h5py.File(fname, 'w')
     headergrp = hdffile.create_group('Header')
     headergrp.attrs['HaloCatalogBaseFileName'] = basename
     headergrp.attrs['FilesSplitByForest'] = isplitbyforest
