@@ -2691,39 +2691,46 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
     ForestSizeStats['Max_forest_fof_groups_size'] = maxforest
     ForestSizeStats['Max_forest_ID'] = ForestIDs[np.argmax(ForestSize)]
     ForestSizeStats['Snapshots'] = {
-        'Number_of_active_forests': None,
-        'Max_forest_size': None,
-        'Max_forest_fof_groups_size': None,
-        'Max_forest_ID': None,
-        'Max_forest_fof_groups_ID': None,
-        'Number_of_halos' : None,
-        'Number_of_fof_groups' : None,
+        'Number_of_active_forests': dict(),
+        'Max_forest_size': dict(),
+        'Max_forest_fof_groups_size': dict(),
+        'Max_forest_ID': dict(),
+        'Max_forest_fof_groups_ID': dict(),
+        'Number_of_halos_in_forests' : dict(),
+        'Number_of_fof_groups_in_forests' : dict(),
+        'Active_forests' : dict(),
         }
     #analyse snapshot by snapshot
     cumcounts = np.zeros(numforests, dtype=np.int64)
     cumcounts_fof = np.zeros(numforests, dtype=np.int64)
     for i in range(snapshotoffset,snapshotoffset+numsnaps):
         snkey = 'Snap_%03d' % i
-        ForestSizeStats['Snapshots']['Number_of_halos'][snkey] = np.zeros(numforests, dtype=np.int64)
-        ForestSizeStats['Snapshots']['Number_of_fof_groups'][snkey] = np.zeros(numforests, dtype=np.int64)
+        for key in ForestSizeStats['Snapshots'].keys():
+            ForestSizeStats['Snapshots'][key][snkey] = 0
+        ForestSizeStats['Snapshots']['Active_forests'][snkey] = None
+        ForestSizeStats['Snapshots']['Number_of_halos_in_forests'][snkey] = np.zeros(numforests, dtype=np.int64)
+        ForestSizeStats['Snapshots']['Number_of_fof_groups_in_forests'][snkey] = np.zeros(numforests, dtype=np.int64)
+
         if (numhalos[i] == 0): continue
         activeforest, counts = np.unique(halodata[i]['ForestID'], return_counts=True)
+        ForestSizeStats['Snapshots']['Number_of_active_forests'][snkey] = activeforest.size
+        ForestSizeStats['Snapshots']['Active_forests'][snkey] = np.array(activeforest)
         wdata = np.where(np.in1d(ForestIDs, activeforest))[0]
         cumcounts[wdata] += counts
-        ForestSizeStats['Snapshots']['Number_of_halos'][snkey][wdata] = counts
+        ForestSizeStats['Snapshots']['Number_of_halos_in_forests'][snkey][wdata] = counts
         ForestSizeStats['Snapshots']['Max_forest_size'][snkey] = np.max(counts)
         ForestSizeStats['Snapshots']['Max_forest_ID'][snkey] = ForestIDs[np.argmax(counts)]
         wfof = np.where(halodata[i]['hostHaloID'] == -1)[0]
+        if (wfof.size == 0): continue
         activeforest, counts = np.unique(halodata[i]['ForestID'][wfof], return_counts=True)
         wdata = np.where(np.in1d(ForestIDs, activeforest))[0]
         cumcounts_fof[wdata] += counts
-        ForestSizeStats['Snapshots']['Number_of_fof_groups'][snkey][wdata] = counts
+        ForestSizeStats['Snapshots']['Number_of_fof_groups_in_forests'][snkey][wdata] = counts
         ForestSizeStats['Snapshots']['Max_forest_fof_groups_size'][snkey] = np.max(counts)
         ForestSizeStats['Snapshots']['Max_forest_fof_groups_ID'][snkey] = ForestIDs[np.argmax(counts)]
     #some some final cumulative stats
     ForestSizeStats['Max_forest_fof_groups_size'] = np.max(cumcounts_fof)
     ForestSizeStats['Max_forest_fof_groups_ID'] = ForestIDs[np.argmax(cumcounts_fof)]
-
 
     start2 = time.clock()
     if (icheckforest):
@@ -3061,11 +3068,18 @@ def WriteForest(basename, numsnaps,
             'Temporal_linking_length': 1,
             'Temporal_ID': 1000000000000,
         },
+        'ParticleInfo':{
+            'Flag_DM': True,
+            'Flag_gas': False,
+            'Flag_star': False,
+            'Flag_bh': False,
+            'Flag_zoom': False,
+            'Particle_mass': {'dm':-1, 'gas':-1, 'star':-1, 'bh':-1, 'lowres': -1}
         },
+    },
     simdata={'Omega_m': 1.0, 'Omega_b': 0., 'Omega_Lambda':0., 'Hubble_param': 1.0, 'BoxSize': 1.0, 'Sigma8': 1.0},
     unitdata={'UnitLength_in_Mpc': 1.0, 'UnitVelocity_in_kms': 1.0, 'UnitMass_in_Msol': 1.0, 'Flag_physical_comoving': True, 'Flag_hubble_flow': False},
-    partdata={'Flag_gas': False, 'Flag_star': False, 'Flag_bh': False,
-    'Particle_mass':{'DarkMatter':-1, 'Gas':-1, 'Star':-1, 'SMBH':-1}},
+    hfconfiginfo=dict(),
     iverbose = 0, isplit = False, isplitbyforest = False, numsplitsperdim = 1
     ):
 
@@ -3095,7 +3109,7 @@ def WriteForest(basename, numsnaps,
                     'Progenitor', 'ProgenitorSnap'
                     ]
     treealiasnames=dict(zip(treekeys,treealiaskeys))
-    treebuilderstatuskeys = ['Temporal_linking_length', 'Temporal_ID']
+    treebuilderstatuskeys = ['Temporal_linking_length', 'Temporal_halo_id_value']
 
     nfiles = 1
     if (isplit and forestdata['Number_of_forests'] > 100):
@@ -3135,10 +3149,11 @@ def WriteForest(basename, numsnaps,
                 print('into', nfiles, 'files')
 
     #write file containing forest statistics
-    print('Writing forest statistics ... ')
+    fname = basename+'.foreststats.hdf5'
+    print('Writing forest statistics to ', fname)
     totnumhalos = sum(numhalos)
     totactivehalos = totnumhalos
-    hdffile = h5py.File(basename+'foreststats.hd5')
+    hdffile = h5py.File(, 'w')
     headergrp = hdffile.create_group('Header')
     headergrp.attrs['HaloCatalogBaseFileName'] = basename
     headergrp.attrs['FilesSplitByForest'] = isplitbyforest
@@ -3160,21 +3175,22 @@ def WriteForest(basename, numsnaps,
         snapnum = i
         snapkey = "Snap_%03d" % snapnum
         snapgrp = forestsnapgrp.create_group(snapkey)
-        snapgrp.attrs['NumActiveForest'] = forestdata['Snapshots']['Number_of_forests'][snapkey]
+        snapgrp.attrs['NumActiveForest'] = forestdata['Snapshots']['Number_of_active_forests'][snapkey]
         snapgrp.attrs['MaxForestSize'] = forestdata['Snapshots']['Max_forest_size'][snapkey]
         snapgrp.attrs['MaxForestID'] = forestdata['Snapshots']['Max_forest_ID'][snapkey]
         snapgrp.attrs['MaxForestFOFGroupSize'] = forestdata['Snapshots']['Max_forest_fof_groups_size'][snapkey]
         snapgrp.attrs['MaxForestFOFGroupID'] = forestdata['Snapshots']['Max_forest_fof_groups_ID'][snapkey]
         snapgrp.create_dataset(
-            'NumHalosInForest', data=forestdata['Snapshots']['Number_of_halos'][snapkey], compression="gzip", compression_opts=6)
+            'NumHalosInForest', data=forestdata['Snapshots']['Number_of_halos_in_forests'][snapkey], compression="gzip", compression_opts=6)
         snapgrp.create_dataset(
-            'NumFOFGroupsInForest', data=forestdata['Snapshots']['Number_of_fof_groups'][snapkey], compression="gzip", compression_opts=6)
+            'NumFOFGroupsInForest', data=forestdata['Snapshots']['Number_of_fof_groups_in_forests'][snapkey], compression="gzip", compression_opts=6)
     hdffile.close()
     print('Done')
 
+    print('Writing halo+tree+forest data ... ')
     for ifile in range(nfiles):
-        print('Writing halo+tree+forest data ... ')
         fname = basename+'.hdf5.%d'%ifile
+        print('Write to ', fname)
         hdffile = h5py.File(fname, 'w')
         headergrp = hdffile.create_group("Header")
 
@@ -3212,12 +3228,12 @@ def WriteForest(basename, numsnaps,
             unitgrp.attrs[key] = unitdata[key]
         # particle types
         partgrp = headergrp.create_group("Parttypes")
-        partgrp.attrs["Flag_gas"] = descripdata["Flag_gas"]
-        partgrp.attrs["Flag_star"] = descripdata["Flag_star"]
-        partgrp.attrs["Flag_bh"] = descripdata["Flag_bh"]
+        for key in descripdata['ParticleInfo'].keys():
+            if (type(descripdata['ParticleInfo'][key]) is dict): continue
+            partgrp.attrs[key] = descripdata['ParticleInfo'][key]
         partmassgrp = headergrp.create_group("Particle_mass")
-        for key in partdata['Particle_mass'].keys():
-            partmassgrp.attrs[key] = partdata['Particle_mass'][key]
+        for key in descripdata['ParticleInfo']['Particle_mass'].keys():
+            partmassgrp.attrs[key] = descripdata['ParticleInfo']['Particle_mass'][key]
 
         if (nfiles > 1):
             activeforest = forestlist[np.where(forestfile == ifile)]
@@ -3234,16 +3250,16 @@ def WriteForest(basename, numsnaps,
             else:
                 snapgrp.attrs["NHalos"] = numhalos[i]
             for key in halodata[i].keys():
+                if (key == 'ConfigurationInfo' or key == 'SimulationInfo' or key == 'UnitInfo'): continue
+                datablock = None
                 if (nfiles == 1):
-                    halogrp=snapgrp.create_dataset(
-                        key, data=halodata[i][key], compression="gzip", compression_opts=6)
-                    if key in treekeys:
-                        snapgrp[treealiasnames[key]]=halogrp
-                else :
-                    halogrp=snapgrp.create_dataset(
-                        key, data=halodata[i][key][activehalos], compression="gzip", compression_opts=6)
-                    if key in treekeys:
-                        snapgrp[treealiasnames[key]]=halogrp
+                    datablock = halodata[i][key]
+                else:
+                    datablock = halodata[i][key][activehalos]
+                halogrp=snapgrp.create_dataset(
+                    key, data=datablock, compression="gzip", compression_opts=6)
+                if key in treekeys:
+                    snapgrp[treealiasnames[key]]=halogrp
         hdffile.close()
         print('Done')
 
