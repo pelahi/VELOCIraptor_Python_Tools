@@ -1388,6 +1388,71 @@ def ReadSOParticleDataFile(basefilename, ibinary=0, iparttypes=0, iverbose=0, bi
 
     return particledata
 
+def ReadProfilesFile(basefilename, ibinary=2, iseparatesubfiles=0, iverbose=0):
+    inompi = True
+    if (iverbose):
+        print("reading radial profile data", basefilename)
+    filename = basefilename+".profiles"
+    # check for file existence
+    if (os.path.isfile(filename) == True):
+        numfiles = 0
+    else:
+        filename += ".0"
+        inompi = False
+        if (os.path.isfile(filename) == False):
+            print("file not found", filename)
+            return []
+    byteoffset = 0
+    if (ibinary !=2):
+        print('WARNING: ASCII and raw binary interface to reading profiles not yet implmented')
+        print('Returning empty dictionary')
+        return None
+    profiledata = dict()
+
+    # hdf
+    if (ibinary == 2):
+        gfile = h5py.File(filename, 'r')
+        filenum = int(gfile["File_id"][0])
+        numfiles = int(gfile["Num_of_files"][0])
+        numhalos = np.uint64(gfile["Num_of_halos"][0])
+        numgroups = np.uint64(gfile["Num_of_groups"][0])
+        numtothalos = np.uint64(gfile["Total_num_of_halos"][0])
+        numtotgroups = np.uint64(gfile["Total_num_of_groups"][0])
+        profiledata['Total_num_of_halos'] = numtothalos
+        profiledata['Total_num_of_groups'] = numtotgroups
+        profiledata['Radial_bin_edges'] = np.array(gfile["Radial_bin_edges"])
+        allkeys = list(gfile.keys())
+    if (numtothalos == 0):
+        return profiledata
+
+    # get list of active keys
+    props = ['Mass', 'Npart']
+    proptypes = ['_profile', '_inclusive_profile']
+    parttypes = ['', '_gas', '_gas_sf', '_gas_nsf', '_star', '_dm', '_interloper']
+    loadablekeys = []
+    for prop in props:
+        for proptype in proptypes:
+            for parttype in parttypes:
+                key = prop+proptype+parttype
+                print(key)
+                if (key in allkeys):
+                    loadablekeys.append(key)
+
+    # now for all files
+    counter = np.uint64(0)
+    for ifile in range(numfiles):
+        filename = basefilename+".profiles"
+        if (inompi == False):
+            filename += "."+str(ifile)
+        if (ibinary == 2):
+            gfile = h5py.File(filename, 'r')
+            numhalos = np.uint64(gfile["Num_of_halos"][0])
+            numgroups = np.uint64(gfile["Num_of_groups"][0])
+            gfile.close()
+            for key in loadablekeys:
+                profiledata[key] = np.array(gfile[key])
+
+    return profiledata
 
 """
     Routines to build a hierarchy structure (both spatially and temporally)
