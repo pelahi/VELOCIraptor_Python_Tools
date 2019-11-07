@@ -3634,6 +3634,7 @@ def WriteWalkableHDFTree(fname, numsnaps, tree, numhalos, halodata, atime,
             'Version' : 1,
             'Temporal_linking_length' : 1,
             'Temporal_halo_id_value' : 1000000000000,
+            'Tree_direction': 1
         },
         'HaloFinder' : {
             'Name' : 'VELOCIraptor',
