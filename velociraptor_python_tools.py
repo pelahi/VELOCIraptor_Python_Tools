@@ -1422,6 +1422,7 @@ def ReadProfilesFile(basefilename, ibinary=2, iseparatesubfiles=0, iverbose=0):
         profiledata['Total_num_of_groups'] = numtotgroups
         profiledata['Radial_bin_edges'] = np.array(gfile["Radial_bin_edges"])
         allkeys = list(gfile.keys())
+        gfile.close()
     if (numtothalos == 0):
         return profiledata
 
@@ -1434,7 +1435,6 @@ def ReadProfilesFile(basefilename, ibinary=2, iseparatesubfiles=0, iverbose=0):
         for proptype in proptypes:
             for parttype in parttypes:
                 key = prop+proptype+parttype
-                print(key)
                 if (key in allkeys):
                     loadablekeys.append(key)
 
@@ -1448,9 +1448,9 @@ def ReadProfilesFile(basefilename, ibinary=2, iseparatesubfiles=0, iverbose=0):
             gfile = h5py.File(filename, 'r')
             numhalos = np.uint64(gfile["Num_of_halos"][0])
             numgroups = np.uint64(gfile["Num_of_groups"][0])
-            gfile.close()
             for key in loadablekeys:
                 profiledata[key] = np.array(gfile[key])
+            gfile.close()
 
     return profiledata
 
