@@ -3,6 +3,7 @@ from __future__ import print_function
 
 import sys
 import os
+import subprocess
 import struct
 import os.path
 import string
@@ -3375,6 +3376,12 @@ def ForestSorter(basename, ibackup = True):
     nfiles = np.int64(hdffile['Header'].attrs["NFiles"])
     hdffile.close()
 
+    if (ibackup):
+        for ifile in range(nfiles):
+            fname = basename+'.hdf5.%d'%ifile
+            newfname = basename+'.hdf5.backup.%d'%ifile
+            subprocess.call(['cp', fname, newfname])
+
     fname = basename+'.hdf5.%d'%0
     hdffile = h5py.File(fname, 'r')
     TEMPORALHALOIDVAL = np.int64(hdffile['Header/TreeBuilder'].attrs['Temporal_halo_id_value'])
@@ -3391,10 +3398,10 @@ def ForestSorter(basename, ibackup = True):
         'Descendant',
         'FirstProgenitor',
         'Progenitor',
-        'LeftTail'
-        'RightTail'
-        'PreviousProgenitor'
-        'NextProgenitor'
+        'LeftTail',
+        'RightTail',
+        'PreviousProgenitor',
+        'NextProgenitor',
     ]
     subhalokeys = [
         'hostHaloID',
@@ -3404,33 +3411,29 @@ def ForestSorter(basename, ibackup = True):
 
     sort_fields = ['ForestID', 'hostHaloID', 'npart']
 
-    idmap = dict()
-
     for ifile in range(nfiles):
         fname = basename+'.hdf5.%d'%ifile
-        if (ibackup):
-            newfname = basename+'.hdf5.backup.%d'%ifile
-            os.popen('cp '+fname+' '+newfname)
-        fname = basename+'.hdf5.%d'%ifile
-        hdffile = h5py.File(fname, 'r+')
-
+        hdffile = h5py.File(fname, 'a')
+        print('First pass building id map', fname)
 
         #first pass to resort arrays
         #store the ids and the newids to map stuff
-        alloldids = np.array([])
-        allnewids = np.array([])
+        alloldids = np.array([], dtype=np.int64)
+        allnewids = np.array([], dtype=np.int64)
+        time1 = time.clock()
         for i in range(numsnaps):
             snapkey = "Snap_%03d" % i
-            ids = hdffile[snapkey]['ID']
-            sort_data = np.zeros([len(sort_fields),ids.size])
-            sort_data[0] = -np.array(hdffile[snapkey]['npart'])
-            sort_data[1] = np.array(hdffile[snapkey]['hostHaloID'])
-            sort_data[2] = np.array(hdffile[snapkey]['ForestID'])
-            indices = np.lexsort((sort_data[0],sort_data[1],sort_data[2]))
-            newids = i*TEMPORALHALOIDVAL+indices+1
-            alloldids = np.concatenante(alloldids,ids[indices])
-            allnewids = np.concatenante(allnewids,newids)
-            #idmap = dict(zip(ids[indices],newids))
+            numhalos = np.int32(hdffile[snapkey].attrs['NHalos'])
+            if (numhalos == 0): continue
+            ids = np.array(hdffile[snapkey]['ID'])
+            sort_data = np.zeros([len(sort_fields),ids.size], dtype=np.int64)
+            sort_data[0] = -np.array(hdffile[snapkey]['npart'], dtype=np.int64)
+            sort_data[1] = np.array(hdffile[snapkey]['hostHaloID'], dtype=np.int64)
+            sort_data[2] = np.array(hdffile[snapkey]['ForestID'], dtype=np.int64)
+            indices = np.array(np.lexsort(sort_data))
+            newids = i*TEMPORALHALOIDVAL+np.arange(numhalos)+1
+            alloldids = np.concatenate([alloldids,np.array(ids[indices])])
+            allnewids = np.concatenate([allnewids,newids])
             propkeys = list(hdffile[snapkey].keys())
             for propkey in propkeys:
                 newdata = np.array(hdffile[snapkey][propkey])[indices]
@@ -3443,9 +3446,16 @@ def ForestSorter(basename, ibackup = True):
             del hdffile[snapkey]['ID']
             hdffile[snapkey].create_dataset('ID',
                 data=newids, compression='gzip', compression_opts=6)
+
         #now go over temporal and subhalo fields and update as necessary
+        print('Finished pass and now have map of new ids to old ids', time.clock()-time1)
+        time1 = time.clock()
         for i in range(numsnaps):
             snapkey = "Snap_%03d" % i
+            numhalos = np.int32(hdffile[snapkey].attrs['NHalos'])
+            if (numhalos == 0): continue
+            print('Processing',snapkey)
+            time2 = time.clock()
             for propkey in temporalkeys:
                 olddata = np.array(hdffile[snapkey][propkey])
                 olddata_unique, olddata_unique_inverse = np.unique(olddata, return_inverse = True)
@@ -3454,6 +3464,7 @@ def ForestSorter(basename, ibackup = True):
                 del hdffile[snapkey][propkey]
                 hdffile[snapkey].create_dataset(propkey,
                     data=newdata, compression='gzip', compression_opts=6)
+            print('Done', snapkey, 'temporal data ', numhalos, 'in', time.clock()-time2)
             for propkey in subhalokeys:
                 olddata = np.array(hdffile[snapkey][propkey])
                 if (propkey == 'hostHaloID'):
@@ -3471,6 +3482,11 @@ def ForestSorter(basename, ibackup = True):
                 del hdffile[snapkey][propkey]
                 hdffile[snapkey].create_dataset(propkey,
                     data=newdata, compression='gzip', compression_opts=6)
+            print('Done', snapkey, 'containing', numhalos, 'in', time.clock()-time2)
+        hdffile.create_group('ID_mapping')
+        hdffile['ID_mapping'].create_dataset('IDs_old', data = alloldids)
+        hdffile['ID_mapping'].create_dataset('IDs_new', data = allnewids)
+        print('Finished updating data ', time.clock()-time1)
         hdffile.close()
 
 
