@@ -180,6 +180,9 @@ def ReadPropertyFile(basefilename, ibinary=0, iseparatesubfiles=0, iverbose=0, d
         fieldnames.remove("Num_of_files")
         fieldnames.remove("Num_of_groups")
         fieldnames.remove("Total_num_of_groups")
+        if ('Configuration' in fieldnames): fieldnames.remove('Configuration')
+        if ('SimulationInfo' in fieldnames): fieldnames.remove('SimulationInfo')
+        if ('UnitInfo' in fieldnames): fieldnames.remove('UnitInfo')
         fieldtype = [halofile[fieldname].dtype for fieldname in fieldnames]
         # if the desiredfields argument is passed only these fieds are loaded
         if (len(desiredfields) > 0):
