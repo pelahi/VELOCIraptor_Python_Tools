@@ -3187,6 +3187,8 @@ def WriteForest(basename, numsnaps,
 
 
     nfiles = 1
+    forestfile = np.zeros(forestdata['Number_of_forests'], dtype = np.int32)
+    forestlist = forestdata['ForestIDs']
     if (isplit and forestdata['Number_of_forests'] > 100):
         if (isplitbyforest):
             if (iverbose >=1):
@@ -3197,7 +3199,7 @@ def WriteForest(basename, numsnaps,
             quantindex = int(forestdata['Number_of_forests']*0.02)
             splitsize = forestlist[quantindex]*2
             cumsize = np.cumsum(forestdata['ForestSizes'][index])
-            forestfile = np.floor(cumsize / splitsize)
+            forestfile = np.array(np.floor(cumsize / splitsize), dtype=np.int32)
             nfiles = np.max(forestfile)
             lastfile = np.where(forestfile == nfiles)[0]
             lastfilesum = np.sum(cumsize[lastfile])
@@ -3223,8 +3225,6 @@ def WriteForest(basename, numsnaps,
             if (iverbose >=1):
                 print('into', nfiles, 'files')
 
-    #if
-
     #write file containing forest statistics
     fname = basename+'.foreststats.hdf5'
     print('Writing forest statistics to ', fname)
@@ -3234,6 +3234,13 @@ def WriteForest(basename, numsnaps,
     headergrp = hdffile.create_group('Header')
     headergrp.attrs['HaloCatalogBaseFileName'] = basename
     headergrp.attrs['FilesSplitByForest'] = isplitbyforest
+    if (isplit and nfiles > 1):
+        if (isplitbyforest):
+            headergrp.attrs['FileSplittingCriteria'] = 'SplitByForest'
+        else:
+            headergrp.attrs['FileSplittingCriteria'] = 'SplitSpatially'
+    else:
+        headergrp.attrs['FileSplittingCriteria'] = 'NoSplitting'
     headergrp.attrs['NFiles'] = nfiles
     headergrp.attrs["NSnaps"] = numsnaps
     forestgrp = hdffile.create_group('ForestInfo')
@@ -3261,6 +3268,10 @@ def WriteForest(basename, numsnaps,
             'NumHalosInForest', data=forestdata['Snapshots']['Number_of_halos_in_forests'][snapkey], compression="gzip", compression_opts=6)
         snapgrp.create_dataset(
             'NumFOFGroupsInForest', data=forestdata['Snapshots']['Number_of_fof_groups_in_forests'][snapkey], compression="gzip", compression_opts=6)
+
+    foo, counts = np.unique(forestfile, return_counts=True)
+    forestgrp.create_dataset(
+        'NForestsPerFile', data=counts, compression="gzip", compression_opts=6)
     hdffile.close()
     print('Done')
 
@@ -3311,9 +3322,13 @@ def WriteForest(basename, numsnaps,
         partmassgrp = headergrp.create_group("Particle_mass")
         for key in descripdata['ParticleInfo']['Particle_mass'].keys():
             partmassgrp.attrs[key] = descripdata['ParticleInfo']['Particle_mass'][key]
-
+        forestgrp = hdffile.create_group("ForestInfo")
         if (nfiles > 1):
             activeforest = forestlist[np.where(forestfile == ifile)]
+        else:
+            activeforest = forestlist
+        forestgrp.create_dataset('ForestIDsInFile', data=activeforest,
+            compression="gzip", compression_opts=6)
         for i in range(snapshotoffset,snapshotoffset+numsnaps):
             snapnum=i
             if (iverbose >=1):
@@ -3321,11 +3336,11 @@ def WriteForest(basename, numsnaps,
             snapgrp = hdffile.create_group("Snap_%03d" % snapnum)
             snapgrp.attrs["Snapnum"] = snapnum
             snapgrp.attrs["scalefactor"] = atime[i]
+            nactive = numhalos[i]
             if (nfiles > 1):
                 activehalos = np.where(np.isin(halodata[i]['ForestID'], activeforest))[0]
-                snapgrp.attrs["NHalos"] = activehalos.size
-            else:
-                snapgrp.attrs["NHalos"] = numhalos[i]
+                nactive = activehalos.size
+            snapgrp.attrs["NHalos"] = nactive
             for key in halodata[i].keys():
                 if (key == 'ConfigurationInfo' or key == 'SimulationInfo' or key == 'UnitInfo'): continue
                 datablock = None
@@ -3368,27 +3383,7 @@ def ForestSorter(basename, ibackup = True):
         Then the indices would be [0, 3, 4, 5, 1, 2]
     """
 
-    fname = basename+'.foreststats.hdf5'
-    hdffile = h5py.File(fname, 'r')
-    forestids = np.array(hdffile['ForestInfo']['ForestIDs'])
-    forestsizes = np.array(hdffile['ForestInfo']['ForestSizes'])
-    numsnaps = np.int64(hdffile['Header'].attrs["NSnaps"])
-    nfiles = np.int64(hdffile['Header'].attrs["NFiles"])
-    hdffile.close()
-
-    if (ibackup):
-        for ifile in range(nfiles):
-            fname = basename+'.hdf5.%d'%ifile
-            newfname = basename+'.hdf5.backup.%d'%ifile
-            subprocess.call(['cp', fname, newfname])
-
-    fname = basename+'.hdf5.%d'%0
-    hdffile = h5py.File(fname, 'r')
-    TEMPORALHALOIDVAL = np.int64(hdffile['Header/TreeBuilder'].attrs['Temporal_halo_id_value'])
-    hdffile.close()
-
-    forestordering = np.argsort(forestids)
-
+    # data fields that will need values updated as ids will be mapped.
     temporalkeys = [
         'RootHead',
         'Head',
@@ -3409,7 +3404,59 @@ def ForestSorter(basename, ibackup = True):
         'PreviousSubhalo',
         ]
 
+    # fields used to determine ordering of halos in file
     sort_fields = ['ForestID', 'hostHaloID', 'npart']
+
+    #open old files to get necessary information
+    fname = basename+'.foreststats.hdf5'
+    hdffile = h5py.File(fname, 'r')
+    forestids = np.array(hdffile['ForestInfo']['ForestIDs'])
+    forestordering = np.argsort(forestids)
+    forestsizes = np.array(hdffile['ForestInfo']['ForestSizes'])
+    numsnaps = np.int64(hdffile['Header'].attrs["NSnaps"])
+    nfiles = np.int64(hdffile['Header'].attrs["NFiles"])
+    hdffile.close()
+
+    fname = basename+'.hdf5.%d'%0
+    hdffile = h5py.File(fname, 'r')
+    TEMPORALHALOIDVAL = np.int64(hdffile['Header/TreeBuilder'].attrs['Temporal_halo_id_value'])
+    hdffile.close()
+
+    # back up files if necessary
+    if (ibackup):
+        fname = basename+'.foreststats.hdf5'
+        newfname = fname+'.backup'
+        subprocess.call(['cp', fname, newfname])
+        for ifile in range(nfiles):
+            fname = basename+'.hdf5.%d'%ifile
+            newfname = fname+'.backup'
+            subprocess.call(['cp', fname, newfname])
+
+    # reorder file containing meta information
+    print('Reordering forest stats data ...')
+    time1 = time.clock()
+    hdffile = h5py.File(fname, 'r+')
+    forestgrp = hdffile['ForestInfo']
+    del forestgrp['ForestIDs']
+    del forestgrp['ForestSizes']
+    forestgrp.create_dataset(
+        'ForestIDs', data=forestids[forestordering], compression="gzip", compression_opts=6)
+    forestgrp.create_dataset(
+        'ForestSizes', data=forestsizes[forestordering], compression="gzip", compression_opts=6)
+    snapskeys = list(forestgrp['Snaps'].keys())
+    for snapkey in snapskeys:
+        snapgrp = forestgrp['Snaps'][snapkey]
+        numhalos = np.array(snapgrp['NumHalosInForest'])[forestordering]
+        numfofs = np.array(snapgrp['NumFOFGroupsInForest'])[forestordering]
+        del snapgrp['NumHalosInForest']
+        del snapgrp['NumFOFGroupsInForest']
+        snapgrp.create_dataset(
+            'NumHalosInForest', data=numhalos, compression="gzip", compression_opts=6)
+        snapgrp.create_dataset(
+            'NumFOFGroupsInForest', data=numfofs, compression="gzip", compression_opts=6)
+    hdffile.close()
+    print('Done', time.clock()-time1)
+
 
     for ifile in range(nfiles):
         fname = basename+'.hdf5.%d'%ifile
