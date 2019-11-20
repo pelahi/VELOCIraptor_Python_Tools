@@ -3411,8 +3411,8 @@ def ForestSorter(basename, ibackup = True):
     fname = basename+'.foreststats.hdf5'
     hdffile = h5py.File(fname, 'r')
     forestids = np.array(hdffile['ForestInfo']['ForestIDs'])
-    forestordering = np.argsort(forestids)
     forestsizes = np.array(hdffile['ForestInfo']['ForestSizes'])
+    forestordering = np.argsort(forestids)
     numsnaps = np.int64(hdffile['Header'].attrs["NSnaps"])
     nfiles = np.int64(hdffile['Header'].attrs["NFiles"])
     hdffile.close()
@@ -3424,6 +3424,7 @@ def ForestSorter(basename, ibackup = True):
 
     # back up files if necessary
     if (ibackup):
+        print('Backing up original data')
         fname = basename+'.foreststats.hdf5'
         newfname = fname+'.backup'
         subprocess.call(['cp', fname, newfname])
@@ -3435,33 +3436,29 @@ def ForestSorter(basename, ibackup = True):
     # reorder file containing meta information
     print('Reordering forest stats data ...')
     time1 = time.clock()
+    fname = basename+'.foreststats.hdf5'
     hdffile = h5py.File(fname, 'r+')
     forestgrp = hdffile['ForestInfo']
-    del forestgrp['ForestIDs']
-    del forestgrp['ForestSizes']
-    forestgrp.create_dataset(
-        'ForestIDs', data=forestids[forestordering], compression="gzip", compression_opts=6)
-    forestgrp.create_dataset(
-        'ForestSizes', data=forestsizes[forestordering], compression="gzip", compression_opts=6)
+    data = forestgrp['ForestIDs'] 
+    data[:] = forestids[forestordering]
+    data = forestgrp['ForestSizes'] 
+    data[:] = forestsizes[forestordering]
     snapskeys = list(forestgrp['Snaps'].keys())
     for snapkey in snapskeys:
         snapgrp = forestgrp['Snaps'][snapkey]
         numhalos = np.array(snapgrp['NumHalosInForest'])[forestordering]
         numfofs = np.array(snapgrp['NumFOFGroupsInForest'])[forestordering]
-        del snapgrp['NumHalosInForest']
-        del snapgrp['NumFOFGroupsInForest']
-        snapgrp.create_dataset(
-            'NumHalosInForest', data=numhalos, compression="gzip", compression_opts=6)
-        snapgrp.create_dataset(
-            'NumFOFGroupsInForest', data=numfofs, compression="gzip", compression_opts=6)
+        data = snapgrp['NumHalosInForest']
+        data[:] = numhalos
+        data = snapgrp['NumFOFGroupsInForest']
+        data[:] = numfofs
     hdffile.close()
     print('Done', time.clock()-time1)
-
 
     for ifile in range(nfiles):
         fname = basename+'.hdf5.%d'%ifile
         hdffile = h5py.File(fname, 'a')
-        print('First pass building id map', fname)
+        print('First pass building id map for file', fname)
 
         #first pass to resort arrays
         #store the ids and the newids to map stuff
@@ -3472,27 +3469,25 @@ def ForestSorter(basename, ibackup = True):
             snapkey = "Snap_%03d" % i
             numhalos = np.int32(hdffile[snapkey].attrs['NHalos'])
             if (numhalos == 0): continue
-            ids = np.array(hdffile[snapkey]['ID'])
+            ids = np.array(hdffile[snapkey]['ID'], dtype=np.int64)
             sort_data = np.zeros([len(sort_fields),ids.size], dtype=np.int64)
             sort_data[0] = -np.array(hdffile[snapkey]['npart'], dtype=np.int64)
             sort_data[1] = np.array(hdffile[snapkey]['hostHaloID'], dtype=np.int64)
             sort_data[2] = np.array(hdffile[snapkey]['ForestID'], dtype=np.int64)
             indices = np.array(np.lexsort(sort_data))
-            newids = i*TEMPORALHALOIDVAL+np.arange(numhalos)+1
-            alloldids = np.concatenate([alloldids,np.array(ids[indices])])
+            newids = i*TEMPORALHALOIDVAL+np.arange(numhalos, dtype=np.int64)+1
+            alloldids = np.concatenate([alloldids,np.array(ids[indices], dtype=np.int64)])
             allnewids = np.concatenate([allnewids,newids])
             propkeys = list(hdffile[snapkey].keys())
             for propkey in propkeys:
                 newdata = np.array(hdffile[snapkey][propkey])[indices]
                 if (propkey == 'ID'): continue
-                del hdffile[snapkey][propkey]
-                hdffile[snapkey].create_dataset(propkey,
-                    data=newdata, compression='gzip', compression_opts=6)
+                data = hdffile[snapkey][propkey]
+                data[:] = newdata
             hdffile[snapkey].create_dataset('ID_old',
-                data=ids[indices], compression='gzip', compression_opts=6)
-            del hdffile[snapkey]['ID']
-            hdffile[snapkey].create_dataset('ID',
-                data=newids, compression='gzip', compression_opts=6)
+                data=ids[indices], dtype=np.int64, compression='gzip', compression_opts=6)
+            data = hdffile[snapkey]['ID']
+            data[:] = newids
 
         #now go over temporal and subhalo fields and update as necessary
         print('Finished pass and now have map of new ids to old ids', time.clock()-time1)
@@ -3508,9 +3503,8 @@ def ForestSorter(basename, ibackup = True):
                 olddata_unique, olddata_unique_inverse = np.unique(olddata, return_inverse = True)
                 xy, x_ind, y_ind = np.intersect1d(alloldids, olddata_unique, return_indices=True)
                 newdata = allnewids[x_ind[olddata_unique_inverse]]
-                del hdffile[snapkey][propkey]
-                hdffile[snapkey].create_dataset(propkey,
-                    data=newdata, compression='gzip', compression_opts=6)
+                data = hdffile[snapkey][propkey]
+                data[:] = newdata 
             print('Done', snapkey, 'temporal data ', numhalos, 'in', time.clock()-time2)
             for propkey in subhalokeys:
                 olddata = np.array(hdffile[snapkey][propkey])
@@ -3526,9 +3520,8 @@ def ForestSorter(basename, ibackup = True):
                     olddata_unique, olddata_unique_inverse = np.unique(olddata, return_inverse = True)
                     xy, x_ind, y_ind = np.intersect1d(alloldids, olddata_unique, return_indices=True)
                     newdata = allnewids[x_ind[olddata_unique_inverse]]
-                del hdffile[snapkey][propkey]
-                hdffile[snapkey].create_dataset(propkey,
-                    data=newdata, compression='gzip', compression_opts=6)
+                data = hdffile[snapkey][propkey]
+                data[:] = newdata
             print('Done', snapkey, 'containing', numhalos, 'in', time.clock()-time2)
         hdffile.create_group('ID_mapping')
         hdffile['ID_mapping'].create_dataset('IDs_old', data = alloldids)
