@@ -22,6 +22,7 @@ import itertools
 import scipy.interpolate as scipyinterp
 import scipy.spatial as spatial
 import multiprocessing as mp
+import mpi4py as mpi
 from collections import deque
 import pandas as pd
 #import cython
@@ -3322,12 +3323,17 @@ def WriteForest(basename, numsnaps,
         partmassgrp = headergrp.create_group("Particle_mass")
         for key in descripdata['ParticleInfo']['Particle_mass'].keys():
             partmassgrp.attrs[key] = descripdata['ParticleInfo']['Particle_mass'][key]
-        forestgrp = hdffile.create_group("ForestInfo")
+        forestgrp = hdffile.create_group("ForestInfoInFile")
         if (nfiles > 1):
-            activeforest = forestlist[np.where(forestfile == ifile)]
+            wdata = np.where(forestfile == ifile)
+            activeforest = forestlist[wdata]
+            activeforestsizes = forestdata['ForestSizes'][wdata]
         else:
             activeforest = forestlist
+            activeforestsizes = forestdata['ForestSizes']
         forestgrp.create_dataset('ForestIDsInFile', data=activeforest,
+            compression="gzip", compression_opts=6)
+        forestgrp.create_dataset('ForestSizesInFile', data=activeforestsizes,
             compression="gzip", compression_opts=6)
         for i in range(snapshotoffset,snapshotoffset+numsnaps):
             snapnum=i
@@ -3336,11 +3342,26 @@ def WriteForest(basename, numsnaps,
             snapgrp = hdffile.create_group("Snap_%03d" % snapnum)
             snapgrp.attrs["Snapnum"] = snapnum
             snapgrp.attrs["scalefactor"] = atime[i]
-            nactive = numhalos[i]
             if (nfiles > 1):
                 activehalos = np.where(np.isin(halodata[i]['ForestID'], activeforest))[0]
+                uniquevalues, uniquecounts = np.unique(halodata[i]['ForestID'][activehalos],
+                    return_counts = True)
+                wdata = np.where(np.isin(activeforest, uniquevalues))[0]
+                activeforestinsnapsizes = np.zeros(activeforest.size, dtype=np.uint64)
+                activeforestinsnapsizes[wdata] = uniquecounts
                 nactive = activehalos.size
+            else:
+                uniquevalues, uniquecounts = np.unique(halodata[i]['ForestID'],
+                    return_counts = True)
+                wdata = np.where(np.isin(activeforest, uniquevalues))[0]
+                activeforestinsnapsizes = np.zeros(activeforest.size, dtype=np.uint64)
+                activeforestinsnapsizes[wdata] = uniquecounts
+                nactive = numhalos[i]
             snapgrp.attrs["NHalos"] = nactive
+            snapgrp.create_dateset("NHalosPerForestInSnap", data = activeforestinsnapsizes,
+                compression="gzip", compression_opts=6)
+
+            #write halo properties
             for key in halodata[i].keys():
                 if (key == 'ConfigurationInfo' or key == 'SimulationInfo' or key == 'UnitInfo'): continue
                 datablock = None
@@ -3439,9 +3460,9 @@ def ForestSorter(basename, ibackup = True):
     fname = basename+'.foreststats.hdf5'
     hdffile = h5py.File(fname, 'r+')
     forestgrp = hdffile['ForestInfo']
-    data = forestgrp['ForestIDs'] 
+    data = forestgrp['ForestIDs']
     data[:] = forestids[forestordering]
-    data = forestgrp['ForestSizes'] 
+    data = forestgrp['ForestSizes']
     data[:] = forestsizes[forestordering]
     snapskeys = list(forestgrp['Snaps'].keys())
     for snapkey in snapskeys:
@@ -3504,7 +3525,7 @@ def ForestSorter(basename, ibackup = True):
                 xy, x_ind, y_ind = np.intersect1d(alloldids, olddata_unique, return_indices=True)
                 newdata = allnewids[x_ind[olddata_unique_inverse]]
                 data = hdffile[snapkey][propkey]
-                data[:] = newdata 
+                data[:] = newdata
             print('Done', snapkey, 'temporal data ', numhalos, 'in', time.clock()-time2)
             for propkey in subhalokeys:
                 olddata = np.array(hdffile[snapkey][propkey])
