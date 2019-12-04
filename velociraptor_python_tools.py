@@ -3501,6 +3501,7 @@ def ForestSorter(basename, ibackup = True):
             allnewids = np.concatenate([allnewids,newids])
             propkeys = list(hdffile[snapkey].keys())
             for propkey in propkeys:
+                if (propkey == 'NHalosPerForestInSnap'): continue
                 newdata = np.array(hdffile[snapkey][propkey])[indices]
                 if (propkey == 'ID'): continue
                 data = hdffile[snapkey][propkey]
