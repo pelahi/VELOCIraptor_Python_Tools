@@ -3,6 +3,7 @@ from __future__ import print_function
 
 import sys
 import os
+import subprocess
 import struct
 import os.path
 import string
@@ -21,6 +22,7 @@ import itertools
 import scipy.interpolate as scipyinterp
 import scipy.spatial as spatial
 import multiprocessing as mp
+import mpi4py as mpi
 from collections import deque
 import pandas as pd
 #import cython
@@ -355,10 +357,10 @@ def ReadHaloMergerTree(treefilename, ibinary=0, iverbose=0, imerit=False, inpart
         numsnaplist = sum(1 for line in snaptreelist) +1
 
         treedata = h5py.File(snaptreename, "r")
-        numsnaps = treedata.attrs['Number_of_snapshots']
+        numsnap = treedata.attrs['Number_of_snapshots']
 
         #Check if the treefrog number of snapshots and the number of files in the list is consistent
-        if(numsnaps!=numsnaplist):
+        if(numsnap!=numsnaplist):
             print("Error, the number of snapshots reported by the TreeFrog output is different to the number of filenames supplied. \nPlease update this.")
             return tree
 
@@ -440,7 +442,7 @@ def ReadHaloMergerTree(treefilename, ibinary=0, iverbose=0, imerit=False, inpart
             snapshotoffset = 0
 
         snaptreelist = open(treefilename, 'r')
-        for snap in range(snapshotoffset,snapshotoffset+numsnaps):
+        for snap in range(snapshotoffset,snapshotoffset+numsnap):
             snaptreename = snaptreelist.readline().strip()+".tree"
             if (iverbose):
                 print("Reading", snaptreename)
@@ -3148,7 +3150,7 @@ def WriteForest(basename, numsnaps,
     simdata={'Omega_m': 1.0, 'Omega_b': 0., 'Omega_Lambda':0., 'Hubble_param': 1.0, 'BoxSize': 1.0, 'Sigma8': 1.0},
     unitdata={'UnitLength_in_Mpc': 1.0, 'UnitVelocity_in_kms': 1.0, 'UnitMass_in_Msol': 1.0, 'Flag_physical_comoving': True, 'Flag_hubble_flow': False},
     hfconfiginfo=dict(),
-    iverbose = 0, isplit = False, isplitbyforest = False, numsplitsperdim = 1
+    iverbose = 0, iorderhalosbyforest = False, isplit = False, isplitbyforest = False, numsplitsperdim = 1
     ):
 
     """
@@ -3176,10 +3178,18 @@ def WriteForest(basename, numsnaps,
                     'FirstProgenitor', 'FirstProgenitorSnap',
                     'Progenitor', 'ProgenitorSnap'
                     ]
+
     treealiasnames=dict(zip(treekeys,treealiaskeys))
     treebuilderstatuskeys = ['Temporal_linking_length', 'Temporal_halo_id_value']
 
+    #if reordering halo's by forest, run argsort on forest IDs
+    #if (ireorderhalosbyforest):
+    #    forestordering = np.argsort(forestdata['ForestIDs'])
+
+
     nfiles = 1
+    forestfile = np.zeros(forestdata['Number_of_forests'], dtype = np.int32)
+    forestlist = forestdata['ForestIDs']
     if (isplit and forestdata['Number_of_forests'] > 100):
         if (isplitbyforest):
             if (iverbose >=1):
@@ -3190,7 +3200,7 @@ def WriteForest(basename, numsnaps,
             quantindex = int(forestdata['Number_of_forests']*0.02)
             splitsize = forestlist[quantindex]*2
             cumsize = np.cumsum(forestdata['ForestSizes'][index])
-            forestfile = np.floor(cumsize / splitsize)
+            forestfile = np.array(np.floor(cumsize / splitsize), dtype=np.int32)
             nfiles = np.max(forestfile)
             lastfile = np.where(forestfile == nfiles)[0]
             lastfilesum = np.sum(cumsize[lastfile])
@@ -3225,6 +3235,13 @@ def WriteForest(basename, numsnaps,
     headergrp = hdffile.create_group('Header')
     headergrp.attrs['HaloCatalogBaseFileName'] = basename
     headergrp.attrs['FilesSplitByForest'] = isplitbyforest
+    if (isplit and nfiles > 1):
+        if (isplitbyforest):
+            headergrp.attrs['FileSplittingCriteria'] = 'SplitByForest'
+        else:
+            headergrp.attrs['FileSplittingCriteria'] = 'SplitSpatially'
+    else:
+        headergrp.attrs['FileSplittingCriteria'] = 'NoSplitting'
     headergrp.attrs['NFiles'] = nfiles
     headergrp.attrs["NSnaps"] = numsnaps
     forestgrp = hdffile.create_group('ForestInfo')
@@ -3252,6 +3269,10 @@ def WriteForest(basename, numsnaps,
             'NumHalosInForest', data=forestdata['Snapshots']['Number_of_halos_in_forests'][snapkey], compression="gzip", compression_opts=6)
         snapgrp.create_dataset(
             'NumFOFGroupsInForest', data=forestdata['Snapshots']['Number_of_fof_groups_in_forests'][snapkey], compression="gzip", compression_opts=6)
+
+    foo, counts = np.unique(forestfile, return_counts=True)
+    forestgrp.create_dataset(
+        'NForestsPerFile', data=counts, compression="gzip", compression_opts=6)
     hdffile.close()
     print('Done')
 
@@ -3302,9 +3323,18 @@ def WriteForest(basename, numsnaps,
         partmassgrp = headergrp.create_group("Particle_mass")
         for key in descripdata['ParticleInfo']['Particle_mass'].keys():
             partmassgrp.attrs[key] = descripdata['ParticleInfo']['Particle_mass'][key]
-
+        forestgrp = hdffile.create_group("ForestInfoInFile")
         if (nfiles > 1):
-            activeforest = forestlist[np.where(forestfile == ifile)]
+            wdata = np.where(forestfile == ifile)
+            activeforest = forestlist[wdata]
+            activeforestsizes = forestdata['ForestSizes'][wdata]
+        else:
+            activeforest = forestlist
+            activeforestsizes = forestdata['ForestSizes']
+        forestgrp.create_dataset('ForestIDsInFile', data=activeforest,
+            compression="gzip", compression_opts=6)
+        forestgrp.create_dataset('ForestSizesInFile', data=activeforestsizes,
+            compression="gzip", compression_opts=6)
         for i in range(snapshotoffset,snapshotoffset+numsnaps):
             snapnum=i
             if (iverbose >=1):
@@ -3314,9 +3344,24 @@ def WriteForest(basename, numsnaps,
             snapgrp.attrs["scalefactor"] = atime[i]
             if (nfiles > 1):
                 activehalos = np.where(np.isin(halodata[i]['ForestID'], activeforest))[0]
-                snapgrp.attrs["NHalos"] = activehalos.size
+                uniquevalues, uniquecounts = np.unique(halodata[i]['ForestID'][activehalos],
+                    return_counts = True)
+                wdata = np.where(np.isin(activeforest, uniquevalues))[0]
+                activeforestinsnapsizes = np.zeros(activeforest.size, dtype=np.uint64)
+                activeforestinsnapsizes[wdata] = uniquecounts
+                nactive = activehalos.size
             else:
-                snapgrp.attrs["NHalos"] = numhalos[i]
+                uniquevalues, uniquecounts = np.unique(halodata[i]['ForestID'],
+                    return_counts = True)
+                wdata = np.where(np.isin(activeforest, uniquevalues))[0]
+                activeforestinsnapsizes = np.zeros(activeforest.size, dtype=np.uint64)
+                activeforestinsnapsizes[wdata] = uniquecounts
+                nactive = numhalos[i]
+            snapgrp.attrs["NHalos"] = nactive
+            snapgrp.create_dateset("NHalosPerForestInSnap", data = activeforestinsnapsizes,
+                compression="gzip", compression_opts=6)
+
+            #write halo properties
             for key in halodata[i].keys():
                 if (key == 'ConfigurationInfo' or key == 'SimulationInfo' or key == 'UnitInfo'): continue
                 datablock = None
@@ -3330,6 +3375,181 @@ def WriteForest(basename, numsnaps,
                     snapgrp[treealiasnames[key]]=halogrp
         hdffile.close()
         print('Done')
+
+def ForestSorter(basename, ibackup = True):
+    """
+    Sorts a forest file and remaps halo IDs.
+    The sort fields (or sort keys) we ordered such that the first key will peform the
+    outer-most sort and the last key will perform the inner-most sort.
+
+    Parameters
+    ----------
+    basename : String
+        Base file name of the forest file.
+        Open HDF5 file of the forest, reading meta information and
+        assumed the HDF5_File to have the following data structure
+        HDF5_file -> Snapshot_Keys -> Halo properties.
+        The file is updated with new IDs and stores old IDs as IDs_old
+        plus saves meta information mapping IDs
+    ibackup : bool
+        Whether to back up the file before updating it.
+    Returns
+    ----------
+    void:
+
+    ----------
+        sort_fields = ["ForestID", "Mass_200mean"]
+        ForestID = [1, 4, 39, 1, 1, 4]
+        Mass_200mean = [4e9, 10e10, 8e8, 7e9, 3e11, 5e6]
+        Then the indices would be [0, 3, 4, 5, 1, 2]
+    """
+
+    # data fields that will need values updated as ids will be mapped.
+    temporalkeys = [
+        'RootHead',
+        'Head',
+        'RootTail',
+        'Tail',
+        'FinalDescendant',
+        'Descendant',
+        'FirstProgenitor',
+        'Progenitor',
+        'LeftTail',
+        'RightTail',
+        'PreviousProgenitor',
+        'NextProgenitor',
+    ]
+    subhalokeys = [
+        'hostHaloID',
+        'NextSubhalo',
+        'PreviousSubhalo',
+        ]
+
+    # fields used to determine ordering of halos in file
+    sort_fields = ['ForestID', 'hostHaloID', 'npart']
+
+    #open old files to get necessary information
+    fname = basename+'.foreststats.hdf5'
+    hdffile = h5py.File(fname, 'r')
+    forestids = np.array(hdffile['ForestInfo']['ForestIDs'])
+    forestsizes = np.array(hdffile['ForestInfo']['ForestSizes'])
+    forestordering = np.argsort(forestids)
+    numsnaps = np.int64(hdffile['Header'].attrs["NSnaps"])
+    nfiles = np.int64(hdffile['Header'].attrs["NFiles"])
+    hdffile.close()
+
+    fname = basename+'.hdf5.%d'%0
+    hdffile = h5py.File(fname, 'r')
+    TEMPORALHALOIDVAL = np.int64(hdffile['Header/TreeBuilder'].attrs['Temporal_halo_id_value'])
+    hdffile.close()
+
+    # back up files if necessary
+    if (ibackup):
+        print('Backing up original data')
+        fname = basename+'.foreststats.hdf5'
+        newfname = fname+'.backup'
+        subprocess.call(['cp', fname, newfname])
+        for ifile in range(nfiles):
+            fname = basename+'.hdf5.%d'%ifile
+            newfname = fname+'.backup'
+            subprocess.call(['cp', fname, newfname])
+
+    # reorder file containing meta information
+    print('Reordering forest stats data ...')
+    time1 = time.clock()
+    fname = basename+'.foreststats.hdf5'
+    hdffile = h5py.File(fname, 'r+')
+    forestgrp = hdffile['ForestInfo']
+    data = forestgrp['ForestIDs']
+    data[:] = forestids[forestordering]
+    data = forestgrp['ForestSizes']
+    data[:] = forestsizes[forestordering]
+    snapskeys = list(forestgrp['Snaps'].keys())
+    for snapkey in snapskeys:
+        snapgrp = forestgrp['Snaps'][snapkey]
+        numhalos = np.array(snapgrp['NumHalosInForest'])[forestordering]
+        numfofs = np.array(snapgrp['NumFOFGroupsInForest'])[forestordering]
+        data = snapgrp['NumHalosInForest']
+        data[:] = numhalos
+        data = snapgrp['NumFOFGroupsInForest']
+        data[:] = numfofs
+    hdffile.close()
+    print('Done', time.clock()-time1)
+
+    for ifile in range(nfiles):
+        fname = basename+'.hdf5.%d'%ifile
+        hdffile = h5py.File(fname, 'a')
+        print('First pass building id map for file', fname)
+
+        #first pass to resort arrays
+        #store the ids and the newids to map stuff
+        alloldids = np.array([], dtype=np.int64)
+        allnewids = np.array([], dtype=np.int64)
+        time1 = time.clock()
+        for i in range(numsnaps):
+            snapkey = "Snap_%03d" % i
+            numhalos = np.int32(hdffile[snapkey].attrs['NHalos'])
+            if (numhalos == 0): continue
+            ids = np.array(hdffile[snapkey]['ID'], dtype=np.int64)
+            sort_data = np.zeros([len(sort_fields),ids.size], dtype=np.int64)
+            sort_data[0] = -np.array(hdffile[snapkey]['npart'], dtype=np.int64)
+            sort_data[1] = np.array(hdffile[snapkey]['hostHaloID'], dtype=np.int64)
+            sort_data[2] = np.array(hdffile[snapkey]['ForestID'], dtype=np.int64)
+            indices = np.array(np.lexsort(sort_data))
+            newids = i*TEMPORALHALOIDVAL+np.arange(numhalos, dtype=np.int64)+1
+            alloldids = np.concatenate([alloldids,np.array(ids[indices], dtype=np.int64)])
+            allnewids = np.concatenate([allnewids,newids])
+            propkeys = list(hdffile[snapkey].keys())
+            for propkey in propkeys:
+                newdata = np.array(hdffile[snapkey][propkey])[indices]
+                if (propkey == 'ID'): continue
+                data = hdffile[snapkey][propkey]
+                data[:] = newdata
+            hdffile[snapkey].create_dataset('ID_old',
+                data=ids[indices], dtype=np.int64, compression='gzip', compression_opts=6)
+            data = hdffile[snapkey]['ID']
+            data[:] = newids
+
+        #now go over temporal and subhalo fields and update as necessary
+        print('Finished pass and now have map of new ids to old ids', time.clock()-time1)
+        time1 = time.clock()
+        for i in range(numsnaps):
+            snapkey = "Snap_%03d" % i
+            numhalos = np.int32(hdffile[snapkey].attrs['NHalos'])
+            if (numhalos == 0): continue
+            print('Processing',snapkey)
+            time2 = time.clock()
+            for propkey in temporalkeys:
+                olddata = np.array(hdffile[snapkey][propkey])
+                olddata_unique, olddata_unique_inverse = np.unique(olddata, return_inverse = True)
+                xy, x_ind, y_ind = np.intersect1d(alloldids, olddata_unique, return_indices=True)
+                newdata = allnewids[x_ind[olddata_unique_inverse]]
+                data = hdffile[snapkey][propkey]
+                data[:] = newdata
+            print('Done', snapkey, 'temporal data ', numhalos, 'in', time.clock()-time2)
+            for propkey in subhalokeys:
+                olddata = np.array(hdffile[snapkey][propkey])
+                if (propkey == 'hostHaloID'):
+                    wdata = np.where(olddata !=-1)[0]
+                    olddata = np.array(hdffile[snapkey][propkey])
+                    newdata = np.array(olddata)
+                    olddata_unique, olddata_unique_inverse = np.unique(olddata[wdata], return_inverse = True)
+                    xy, x_ind, y_ind = np.intersect1d(alloldids, olddata_unique, return_indices=True)
+                    newdata[wdata] = allnewids[x_ind[olddata_unique_inverse]]
+                else:
+                    olddata = np.array(hdffile[snapkey][propkey])
+                    olddata_unique, olddata_unique_inverse = np.unique(olddata, return_inverse = True)
+                    xy, x_ind, y_ind = np.intersect1d(alloldids, olddata_unique, return_indices=True)
+                    newdata = allnewids[x_ind[olddata_unique_inverse]]
+                data = hdffile[snapkey][propkey]
+                data[:] = newdata
+            print('Done', snapkey, 'containing', numhalos, 'in', time.clock()-time2)
+        hdffile.create_group('ID_mapping')
+        hdffile['ID_mapping'].create_dataset('IDs_old', data = alloldids)
+        hdffile['ID_mapping'].create_dataset('IDs_new', data = allnewids)
+        print('Finished updating data ', time.clock()-time1)
+        hdffile.close()
+
 
 def WriteCombinedUnifiedTreeandHaloCatalog(fname, numsnaps, rawtree, numhalos, halodata, atime,
                                            descripdata={'Title': 'Tree and Halo catalog of sim', 'VELOCIraptor_version': 1.15, 'Tree_version': 1.1,
