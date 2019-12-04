@@ -357,10 +357,10 @@ def ReadHaloMergerTree(treefilename, ibinary=0, iverbose=0, imerit=False, inpart
         numsnaplist = sum(1 for line in snaptreelist) +1
 
         treedata = h5py.File(snaptreename, "r")
-        numsnaps = treedata.attrs['Number_of_snapshots']
+        numsnap = treedata.attrs['Number_of_snapshots']
 
         #Check if the treefrog number of snapshots and the number of files in the list is consistent
-        if(numsnaps!=numsnaplist):
+        if(numsnap!=numsnaplist):
             print("Error, the number of snapshots reported by the TreeFrog output is different to the number of filenames supplied. \nPlease update this.")
             return tree
 
@@ -442,7 +442,7 @@ def ReadHaloMergerTree(treefilename, ibinary=0, iverbose=0, imerit=False, inpart
             snapshotoffset = 0
 
         snaptreelist = open(treefilename, 'r')
-        for snap in range(snapshotoffset,snapshotoffset+numsnaps):
+        for snap in range(snapshotoffset,snapshotoffset+numsnap):
             snaptreename = snaptreelist.readline().strip()+".tree"
             if (iverbose):
                 print("Reading", snaptreename)
