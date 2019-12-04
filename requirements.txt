@@ -3,3 +3,4 @@ h5py
 scipy
 pandas
 cython
+mpi4py
