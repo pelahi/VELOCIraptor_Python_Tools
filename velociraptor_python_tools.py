@@ -3358,7 +3358,7 @@ def WriteForest(basename, numsnaps,
                 activeforestinsnapsizes[wdata] = uniquecounts
                 nactive = numhalos[i]
             snapgrp.attrs["NHalos"] = nactive
-            snapgrp.create_dateset("NHalosPerForestInSnap", data = activeforestinsnapsizes,
+            snapgrp.create_dataset("NHalosPerForestInSnap", data = activeforestinsnapsizes,
                 compression="gzip", compression_opts=6)
 
             #write halo properties
