@@ -3328,13 +3328,21 @@ def WriteForest(basename, numsnaps,
             wdata = np.where(forestfile == ifile)
             activeforest = forestlist[wdata]
             activeforestsizes = forestdata['ForestSizes'][wdata]
+            activeforestfofsizes = forestdata['Max_forest_fof_groups_size'][wdata]
         else:
             activeforest = forestlist
             activeforestsizes = forestdata['ForestSizes']
+            activeforestfofsizes = forestdata['Max_forest_fof_groups_size']
         forestgrp.create_dataset('ForestIDsInFile', data=activeforest,
             compression="gzip", compression_opts=6)
         forestgrp.create_dataset('ForestSizesInFile', data=activeforestsizes,
             compression="gzip", compression_opts=6)
+        forestgrp.attrs['NForests'] = activeforest.size
+        forestgrp.attrs['MaxForestSize'] = np.max(activeforestsizes)
+        forestgrp.attrs['MaxForestID'] = activeforest[np.argmax(activeforestsizes)]
+        forestgrp.attrs['MaxForestFOFGroupSize'] = np.max(activeforestfofsizes)
+        forestgrp.attrs['MaxForestFOFGroupID'] = activeforest[np.argmax(activeforestfofsizes)]
+
         for i in range(snapshotoffset,snapshotoffset+numsnaps):
             snapnum=i
             if (iverbose >=1):
