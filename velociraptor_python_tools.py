@@ -22,7 +22,7 @@ import itertools
 import scipy.interpolate as scipyinterp
 import scipy.spatial as spatial
 import multiprocessing as mp
-import mpi4py as mpi
+#import mpi4py as mpi
 from collections import deque
 import pandas as pd
 #import cython
@@ -3337,11 +3337,11 @@ def WriteForest(basename, numsnaps,
             compression="gzip", compression_opts=6)
         forestgrp.create_dataset('ForestSizesInFile', data=activeforestsizes,
             compression="gzip", compression_opts=6)
-        forestgrp.attrs['NForests'] = activeforest.size
-        forestgrp.attrs['MaxForestSize'] = np.max(activeforestsizes)
-        forestgrp.attrs['MaxForestID'] = activeforest[np.argmax(activeforestsizes)]
-        forestgrp.attrs['MaxForestFOFGroupSize'] = np.max(activeforestfofsizes)
-        forestgrp.attrs['MaxForestFOFGroupID'] = activeforest[np.argmax(activeforestfofsizes)]
+        forestgrp.attrs['NForestsInFile'] = activeforest.size
+        forestgrp.attrs['MaxForestSizeInFile'] = np.max(activeforestsizes)
+        forestgrp.attrs['MaxForestIDInFile'] = activeforest[np.argmax(activeforestsizes)]
+        forestgrp.attrs['MaxForestFOFGroupSizeInFile'] = np.max(activeforestfofsizes)
+        forestgrp.attrs['MaxForestFOFGroupIDInFile'] = activeforest[np.argmax(activeforestfofsizes)]
 
         for i in range(snapshotoffset,snapshotoffset+numsnaps):
             snapnum=i
