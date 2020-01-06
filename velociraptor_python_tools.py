@@ -3508,6 +3508,7 @@ def ForestSorter(basename, ibackup = True):
             sort_data[2] = np.array(hdffile[snapkey]['ForestID'], dtype=np.int64)
             indices = np.array(np.lexsort(sort_data))
             newids = i*TEMPORALHALOIDVAL+np.arange(numhalos, dtype=np.int64)+1
+
             alloldids = np.concatenate([alloldids,np.array(ids[indices], dtype=np.int64)])
             allnewids = np.concatenate([allnewids,newids])
             propkeys = list(hdffile[snapkey].keys())
@@ -3538,16 +3539,16 @@ def ForestSorter(basename, ibackup = True):
                 newdata = allnewids[x_ind[olddata_unique_inverse]]
                 data = hdffile[snapkey][propkey]
                 data[:] = newdata
-            print('Done', snapkey, 'temporal data ', numhalos, 'in', time.clock()-time2)
             for propkey in subhalokeys:
                 olddata = np.array(hdffile[snapkey][propkey])
                 if (propkey == 'hostHaloID'):
+                    newdata = -np.ones(numhalos, dtype=np.int64)
                     wdata = np.where(olddata !=-1)[0]
-                    olddata = np.array(hdffile[snapkey][propkey])
-                    newdata = np.array(olddata)
-                    olddata_unique, olddata_unique_inverse = np.unique(olddata[wdata], return_inverse = True)
-                    xy, x_ind, y_ind = np.intersect1d(alloldids, olddata_unique, return_indices=True)
-                    newdata[wdata] = allnewids[x_ind[olddata_unique_inverse]]
+                    if (wdata.size >0):
+                        olddata_unique, olddata_unique_inverse = np.unique(olddata[wdata], return_inverse = True)
+                        xy, x_ind, y_ind = np.intersect1d(alloldids, olddata_unique, return_indices=True)
+                        newdata[wdata] = allnewids[x_ind[olddata_unique_inverse]]
+                        print('host halo ID update ', wdata.size, olddata[wdata], newdata[wdata])
                 else:
                     olddata = np.array(hdffile[snapkey][propkey])
                     olddata_unique, olddata_unique_inverse = np.unique(olddata, return_inverse = True)
