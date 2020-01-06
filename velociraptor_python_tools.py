@@ -3131,12 +3131,14 @@ def WriteForest(basename, numsnaps,
             'Name': 'VELOCIraptor',
             'Version': 1.15,
             'Particle_num_threshold': 20,
+            'Subhalo_Particle_num_threshold': 20,
         },
         'TreeBuilder': {
             'Name': 'TreeFrog',
             'Version': 1.1,
             'Temporal_linking_length': 1,
             'Temporal_ID': 1000000000000,
+            'Temporally_Unique_Halo_ID_Description': 'Snap_num*Temporal_linking_length+Index+1'
         },
         'ParticleInfo':{
             'Flag_DM': True,
@@ -3413,17 +3415,18 @@ def ForestSorter(basename, ibackup = True):
     """
 
     # data fields that will need values updated as ids will be mapped.
+    # as some fields are aliased, don't update them
     temporalkeys = [
-        'RootHead',
-        'Head',
-        'RootTail',
-        'Tail',
+        #'RootHead',
+        #'Head',
+        #'RootTail',
+        #'Tail',
         'FinalDescendant',
         'Descendant',
         'FirstProgenitor',
         'Progenitor',
-        'LeftTail',
-        'RightTail',
+        #'LeftTail',
+        #'RightTail',
         'PreviousProgenitor',
         'NextProgenitor',
     ]
@@ -3866,12 +3869,14 @@ def WriteWalkableHDFTree(fname, numsnaps, tree, numhalos, halodata, atime,
             'Version' : 1,
             'Temporal_linking_length' : 1,
             'Temporal_halo_id_value' : 1000000000000,
-            'Tree_direction': 1
+            'Tree_direction': 1,
+            'Temporally_Unique_Halo_ID_Description': 'Snap_num*Temporal_linking_length+Index+1'
         },
         'HaloFinder' : {
             'Name' : 'VELOCIraptor',
             'Version' : 1,
             'Particle_num_threshold' : 20,
+            'Subhalo_Particle_num_threshold': 20,
             },
         }
         ):
