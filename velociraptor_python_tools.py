@@ -3618,7 +3618,7 @@ def ForceBiDirectionalTreeInForestFile(basename):
             descenindex = np.int64(descens % TEMPORALHALOIDVAL - 1)
             #descenprogen = dict(zip(descens,ids))
             maxsnaps = np.max(descensnaps)
-            for isnap in range(i+1,maxsnaps):
+            for isnap in range(i+1,maxsnaps+1):
                 snapkey2 = "Snap_%03d" % isnap
                 activedescens = np.where(descensnaps == isnap)[0]
                 if (activedescens.size == 0): continue
@@ -3627,10 +3627,9 @@ def ForceBiDirectionalTreeInForestFile(basename):
                 wdata = np.where(progens == ids2)[0]
                 if (wdata.size == 0): continue
                 newdata = np.array(hdffile[snapkey2]['Progenitor'])
-                newdata[descenindex[activedescens]][wdata] = ids[activedescens]
+                newdata[descenindex[activedescens][wdata]] = ids[activedescens][wdata]
                 data = hdffile[snapkey2]['Progenitor']
-                #data[:] = newdata
-                print(snapkey, snapkey2, wdata.size, np.array(data)[descenindex[activedescens]][wdata], newdata[descenindex[activedescens]][wdata])
+                data[:] = newdata
         print('Finished updating data ', time.clock()-time1)
         hdffile.close()
 
