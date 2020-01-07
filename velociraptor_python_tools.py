@@ -22,7 +22,7 @@ import itertools
 import scipy.interpolate as scipyinterp
 import scipy.spatial as spatial
 import multiprocessing as mp
-import mpi4py as mpi
+#import mpi4py as mpi
 from collections import deque
 import pandas as pd
 #import cython
@@ -3131,12 +3131,14 @@ def WriteForest(basename, numsnaps,
             'Name': 'VELOCIraptor',
             'Version': 1.15,
             'Particle_num_threshold': 20,
+            'Subhalo_Particle_num_threshold': 20,
         },
         'TreeBuilder': {
             'Name': 'TreeFrog',
             'Version': 1.1,
             'Temporal_linking_length': 1,
             'Temporal_ID': 1000000000000,
+            'Temporally_Unique_Halo_ID_Description': 'Snap_num*Temporal_linking_length+Index+1'
         },
         'ParticleInfo':{
             'Flag_DM': True,
@@ -3328,13 +3330,21 @@ def WriteForest(basename, numsnaps,
             wdata = np.where(forestfile == ifile)
             activeforest = forestlist[wdata]
             activeforestsizes = forestdata['ForestSizes'][wdata]
+            activeforestfofsizes = forestdata['Max_forest_fof_groups_size'][wdata]
         else:
             activeforest = forestlist
             activeforestsizes = forestdata['ForestSizes']
+            activeforestfofsizes = forestdata['Max_forest_fof_groups_size']
         forestgrp.create_dataset('ForestIDsInFile', data=activeforest,
             compression="gzip", compression_opts=6)
         forestgrp.create_dataset('ForestSizesInFile', data=activeforestsizes,
             compression="gzip", compression_opts=6)
+        forestgrp.attrs['NForestsInFile'] = activeforest.size
+        forestgrp.attrs['MaxForestSizeInFile'] = np.max(activeforestsizes)
+        forestgrp.attrs['MaxForestIDInFile'] = activeforest[np.argmax(activeforestsizes)]
+        forestgrp.attrs['MaxForestFOFGroupSizeInFile'] = np.max(activeforestfofsizes)
+        forestgrp.attrs['MaxForestFOFGroupIDInFile'] = activeforest[np.argmax(activeforestfofsizes)]
+
         for i in range(snapshotoffset,snapshotoffset+numsnaps):
             snapnum=i
             if (iverbose >=1):
@@ -3405,17 +3415,18 @@ def ForestSorter(basename, ibackup = True):
     """
 
     # data fields that will need values updated as ids will be mapped.
+    # as some fields are aliased, don't update them
     temporalkeys = [
-        'RootHead',
-        'Head',
-        'RootTail',
-        'Tail',
+        #'RootHead',
+        #'Head',
+        #'RootTail',
+        #'Tail',
         'FinalDescendant',
         'Descendant',
         'FirstProgenitor',
         'Progenitor',
-        'LeftTail',
-        'RightTail',
+        #'LeftTail',
+        #'RightTail',
         'PreviousProgenitor',
         'NextProgenitor',
     ]
@@ -3441,6 +3452,17 @@ def ForestSorter(basename, ibackup = True):
     fname = basename+'.hdf5.%d'%0
     hdffile = h5py.File(fname, 'r')
     TEMPORALHALOIDVAL = np.int64(hdffile['Header/TreeBuilder'].attrs['Temporal_halo_id_value'])
+    snapkey = "Snap_%03d" % (numsnaps-1)
+    allpropkeys = list(hdffile[snapkey].keys())
+    idkeylist = []
+    propkeys = []
+    aliasedkeys = []
+    for propkey in allpropkeys:
+        if (hdffile[snapkey][propkey].id not in idkeylist):
+            idkeylist.append(hdffile[snapkey][propkey].id)
+            propkeys.append(propkey)
+        else:
+            aliasedkeys.append(propkey)
     hdffile.close()
 
     # back up files if necessary
@@ -3497,12 +3519,15 @@ def ForestSorter(basename, ibackup = True):
             sort_data[2] = np.array(hdffile[snapkey]['ForestID'], dtype=np.int64)
             indices = np.array(np.lexsort(sort_data))
             newids = i*TEMPORALHALOIDVAL+np.arange(numhalos, dtype=np.int64)+1
+
             alloldids = np.concatenate([alloldids,np.array(ids[indices], dtype=np.int64)])
             allnewids = np.concatenate([allnewids,newids])
-            propkeys = list(hdffile[snapkey].keys())
+            # propkeys = list(hdffile[snapkey].keys())
             for propkey in propkeys:
-                newdata = np.array(hdffile[snapkey][propkey])[indices]
+                if (propkey == 'NHalosPerForestInSnap'): continue
                 if (propkey == 'ID'): continue
+                if (propkey in aliasedkeys): continue
+                newdata = np.array(hdffile[snapkey][propkey])[indices]
                 data = hdffile[snapkey][propkey]
                 data[:] = newdata
             hdffile[snapkey].create_dataset('ID_old',
@@ -3526,16 +3551,15 @@ def ForestSorter(basename, ibackup = True):
                 newdata = allnewids[x_ind[olddata_unique_inverse]]
                 data = hdffile[snapkey][propkey]
                 data[:] = newdata
-            print('Done', snapkey, 'temporal data ', numhalos, 'in', time.clock()-time2)
             for propkey in subhalokeys:
                 olddata = np.array(hdffile[snapkey][propkey])
                 if (propkey == 'hostHaloID'):
+                    newdata = -np.ones(numhalos, dtype=np.int64)
                     wdata = np.where(olddata !=-1)[0]
-                    olddata = np.array(hdffile[snapkey][propkey])
-                    newdata = np.array(olddata)
-                    olddata_unique, olddata_unique_inverse = np.unique(olddata[wdata], return_inverse = True)
-                    xy, x_ind, y_ind = np.intersect1d(alloldids, olddata_unique, return_indices=True)
-                    newdata[wdata] = allnewids[x_ind[olddata_unique_inverse]]
+                    if (wdata.size >0):
+                        olddata_unique, olddata_unique_inverse = np.unique(olddata[wdata], return_inverse = True)
+                        xy, x_ind, y_ind = np.intersect1d(alloldids, olddata_unique, return_indices=True)
+                        newdata[wdata] = allnewids[x_ind[olddata_unique_inverse]]
                 else:
                     olddata = np.array(hdffile[snapkey][propkey])
                     olddata_unique, olddata_unique_inverse = np.unique(olddata, return_inverse = True)
@@ -3857,12 +3881,14 @@ def WriteWalkableHDFTree(fname, numsnaps, tree, numhalos, halodata, atime,
             'Version' : 1,
             'Temporal_linking_length' : 1,
             'Temporal_halo_id_value' : 1000000000000,
-            'Tree_direction': 1
+            'Tree_direction': 1,
+            'Temporally_Unique_Halo_ID_Description': 'Snap_num*Temporal_linking_length+Index+1'
         },
         'HaloFinder' : {
             'Name' : 'VELOCIraptor',
             'Version' : 1,
             'Particle_num_threshold' : 20,
+            'Subhalo_Particle_num_threshold': 20,
             },
         }
         ):
