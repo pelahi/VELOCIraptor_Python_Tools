@@ -3452,6 +3452,17 @@ def ForestSorter(basename, ibackup = True):
     fname = basename+'.hdf5.%d'%0
     hdffile = h5py.File(fname, 'r')
     TEMPORALHALOIDVAL = np.int64(hdffile['Header/TreeBuilder'].attrs['Temporal_halo_id_value'])
+    snapkey = "Snap_%03d" % (numsnaps-1)
+    allpropkeys = list(hdffile[snapkey].keys())
+    idkeylist = []
+    propkeys = []
+    aliasedkeys = []
+    for propkey in allpropkeys:
+        if (hdffile[snapkey][propkey].id not in idkeylist):
+            idkeylist.append(hdffile[snapkey][propkey].id)
+            propkeys.append(propkey)
+        else:
+            aliasedkeys.append(propkey)
     hdffile.close()
 
     # back up files if necessary
@@ -3511,11 +3522,12 @@ def ForestSorter(basename, ibackup = True):
 
             alloldids = np.concatenate([alloldids,np.array(ids[indices], dtype=np.int64)])
             allnewids = np.concatenate([allnewids,newids])
-            propkeys = list(hdffile[snapkey].keys())
+            # propkeys = list(hdffile[snapkey].keys())
             for propkey in propkeys:
                 if (propkey == 'NHalosPerForestInSnap'): continue
-                newdata = np.array(hdffile[snapkey][propkey])[indices]
                 if (propkey == 'ID'): continue
+                if (propkey in aliasedkeys): continue
+                newdata = np.array(hdffile[snapkey][propkey])[indices]
                 data = hdffile[snapkey][propkey]
                 data[:] = newdata
             hdffile[snapkey].create_dataset('ID_old',
@@ -3548,7 +3560,6 @@ def ForestSorter(basename, ibackup = True):
                         olddata_unique, olddata_unique_inverse = np.unique(olddata[wdata], return_inverse = True)
                         xy, x_ind, y_ind = np.intersect1d(alloldids, olddata_unique, return_indices=True)
                         newdata[wdata] = allnewids[x_ind[olddata_unique_inverse]]
-                        print('host halo ID update ', wdata.size, olddata[wdata], newdata[wdata])
                 else:
                     olddata = np.array(hdffile[snapkey][propkey])
                     olddata_unique, olddata_unique_inverse = np.unique(olddata, return_inverse = True)
