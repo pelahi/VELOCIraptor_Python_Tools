@@ -3574,6 +3574,64 @@ def ForestSorter(basename, ibackup = True):
         print('Finished updating data ', time.clock()-time1)
         hdffile.close()
 
+def ForceBiDirectionalTreeInForestFile(basename):
+    """
+    Forces bi-directional tree in file
+
+    Parameters
+    ----------
+    basename : String
+        Base file name of the forest file.
+        Open HDF5 file of the forest, reading meta information and
+        assumed the HDF5_File to have the following data structure
+        HDF5_file -> Snapshot_Keys -> Halo properties.
+        The file is updated to force bi-directional tree
+    Returns
+    ----------
+    void:
+
+    """
+
+    #open old files to get necessary information
+    fname = basename+'.foreststats.hdf5'
+    hdffile = h5py.File(fname, 'r')
+    numsnaps = np.int64(hdffile['Header'].attrs["NSnaps"])
+    nfiles = np.int64(hdffile['Header'].attrs["NFiles"])
+    hdffile.close()
+
+    fname = basename+'.hdf5.%d'%0
+    hdffile = h5py.File(fname, 'r')
+    TEMPORALHALOIDVAL = np.int64(hdffile['Header/TreeBuilder'].attrs['Temporal_halo_id_value'])
+    hdffile.close()
+
+    for ifile in range(nfiles):
+        fname = basename+'.hdf5.%d'%ifile
+        hdffile = h5py.File(fname, 'a')
+        time1 = time.clock()
+        for i in range(numsnaps):
+            snapkey = "Snap_%03d" % i
+            numhalos = np.int32(hdffile[snapkey].attrs['NHalos'])
+            if (numhalos == 0): continue
+            ids = np.array(hdffile[snapkey]['ID'])
+            descens = np.array(hdffile[snapkey]['Descendant'])
+            descensnaps = np.int32(descens / TEMPORALHALOIDVAL)
+            descenindex = np.int64(descens % TEMPORALHALOIDVAL - 1)
+            #descenprogen = dict(zip(descens,ids))
+            maxsnaps = np.max(descensnaps)
+            for isnap in range(i+1,maxsnaps+1):
+                snapkey2 = "Snap_%03d" % isnap
+                activedescens = np.where(descensnaps == isnap)[0]
+                if (activedescens.size == 0): continue
+                ids2 = np.array(hdffile[snapkey2]['ID'])[descenindex[activedescens]]
+                progens = np.array(hdffile[snapkey2]['Progenitor'])[descenindex[activedescens]]
+                wdata = np.where(progens == ids2)[0]
+                if (wdata.size == 0): continue
+                newdata = np.array(hdffile[snapkey2]['Progenitor'])
+                newdata[descenindex[activedescens][wdata]] = ids[activedescens][wdata]
+                data = hdffile[snapkey2]['Progenitor']
+                data[:] = newdata
+        print('Finished updating data ', time.clock()-time1)
+        hdffile.close()
 
 def WriteCombinedUnifiedTreeandHaloCatalog(fname, numsnaps, rawtree, numhalos, halodata, atime,
                                            descripdata={'Title': 'Tree and Halo catalog of sim', 'VELOCIraptor_version': 1.15, 'Tree_version': 1.1,
