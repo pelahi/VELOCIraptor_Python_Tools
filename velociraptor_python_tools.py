@@ -3661,9 +3661,9 @@ def ForestFileAddMetaData(basename):
             hdffile[snapkey].create_dataset("ForestOffsetPerSnap", data = offset)
 
         if ("ForestSizesAllSnaps" not in list(hdffile['ForestInfoInFile'].keys()) and
-            "ForestOffsetsAllSnaps" not in list(hdffile.keys())):
-            forestsizesinfile = np.zeros([numsnaps,nforests])
-            forestoffsetsinfile = np.zeros([numsnaps,nforests])
+            "ForestOffsetsAllSnaps" not in list(hdffile['ForestInfoInFile'].keys())):
+            forestsizesinfile = np.zeros([numsnaps,nforests], dtype=np.int64)
+            forestoffsetsinfile = np.zeros([numsnaps,nforests], dtype=np.int64)
             for i in range(numsnaps):
                 snapkey = "Snap_%03d" % i
                 forestsizesinfile[i] = np.array(hdffile[snapkey]['NHalosPerForestInSnap'])
