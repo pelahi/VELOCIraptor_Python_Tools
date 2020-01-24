@@ -3660,16 +3660,16 @@ def ForestFileAddMetaData(basename):
                 offset[1:] = np.cumsum(np.array(hdffile[snapkey]['NHalosPerForestInSnap']))[:-1]
             hdffile[snapkey].create_dataset("ForestOffsetPerSnap", data = offset)
 
-        if ("ForestSizesAllSnaps" not in list(hdffile[snapkey].keys()) and
-            "ForestOffsetsAllSnaps" not in list(hdffile[snapkey].keys())):
+        if ("ForestSizesAllSnaps" not in list(hdffile['ForestInfoInFile'].keys()) and
+            "ForestOffsetsAllSnaps" not in list(hdffile.keys())):
             forestsizesinfile = np.zeros([numsnaps,nforests])
             forestoffsetsinfile = np.zeros([numsnaps,nforests])
             for i in range(numsnaps):
                 snapkey = "Snap_%03d" % i
                 forestsizesinfile[i] = np.array(hdffile[snapkey]['NHalosPerForestInSnap'])
                 forestoffsetsinfile[i][1:] = np.cumsum(forestsizesinfile[i])[:-1]
-            hdffile[snapkey].create_dataset("ForestSizesAllSnaps", data = forestsizesinfile)
-            hdffile[snapkey].create_dataset("ForestOffsetsAllSnaps", data = forestoffsetsinfile)
+            hdffile['ForestInfoInFile'].create_dataset("ForestSizesAllSnaps", data = forestsizesinfile)
+            hdffile['ForestInfoInFile'].create_dataset("ForestOffsetsAllSnaps", data = forestoffsetsinfile)
 
         for i in range(numsnaps):
             snapkey = "Snap_%03d" % i
