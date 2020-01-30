@@ -3668,6 +3668,8 @@ def ForestFileAddMetaData(basename):
                 snapkey = "Snap_%03d" % i
                 forestsizesinfile[i] = np.array(hdffile[snapkey]['NHalosPerForestInSnap'])
                 forestoffsetsinfile[i][1:] = np.cumsum(forestsizesinfile[i])[:-1]
+            forestsizesinfile = forestsizesinfile.transpose()
+            forestoffsetsinfile = forestoffsetsinfile.transpose()
             hdffile['ForestInfoInFile'].create_dataset("ForestSizesAllSnaps", data = forestsizesinfile)
             hdffile['ForestInfoInFile'].create_dataset("ForestOffsetsAllSnaps", data = forestoffsetsinfile)
 
