@@ -64,7 +64,7 @@ def ReadPropertyFile(basefilename, ibinary=0, iseparatesubfiles=0, iverbose=0, d
     # this variable is the size of the char array in binary formated data that stores the field names
     CHARSIZE = 40
 
-    start = time.clock()
+    start = time.process_time()
     inompi = True
     if (iverbose):
         print("reading properties file", basefilename)
@@ -294,7 +294,7 @@ def ReadPropertyFile(basefilename, ibinary=0, iseparatesubfiles=0, iverbose=0, d
         catalog['ConfigurationInfo'] = ReadConfigInfo(basefilename)
 
     if (iverbose):
-        print("done reading properties file ", time.clock()-start)
+        print("done reading properties file ", time.process_time()-start)
     return catalog, numtothalos
 
 
@@ -336,7 +336,7 @@ def ReadHaloMergerTree(treefilename, ibinary=0, iverbose=0, imerit=False, inpart
     one can also have an output format that has an additional field for each progenitor, the meritvalue
 
     """
-    start = time.clock()
+    start = time.process_time()
     tree = {}
     if (iverbose):
         print("reading Tree file", treefilename, os.path.isfile(treefilename))
@@ -473,7 +473,7 @@ def ReadHaloMergerTree(treefilename, ibinary=0, iverbose=0, imerit=False, inpart
 
         snaptreelist.close()
     if (iverbose):
-        print("done reading tree file ", time.clock()-start)
+        print("done reading tree file ", time.process_time()-start)
     return tree
 
 class MinStorageList():
@@ -521,7 +521,7 @@ def ReadHaloMergerTreeDescendant(treefilename, ireverseorder=False, ibinary=0,
     one can also have an output format that has an additional field for each progenitor, the meritvalue
 
     """
-    start = time.clock()
+    start = time.process_time()
     tree = {}
     if (iverbose):
         print("reading Tree file", treefilename, os.path.isfile(treefilename))
@@ -758,7 +758,7 @@ def ReadHaloMergerTreeDescendant(treefilename, ireverseorder=False, ibinary=0,
             treedata.close()
 
     if (iverbose):
-        print("done reading tree file ", time.clock()-start)
+        print("done reading tree file ", time.process_time()-start)
     return tree
 
 
@@ -769,7 +769,7 @@ def ReadHaloPropertiesAcrossSnapshots(numsnaps, snaplistfname, inputtype, iseper
     halodata = [dict() for j in range(numsnaps)]
     ngtot = [0 for j in range(numsnaps)]
     atime = [0 for j in range(numsnaps)]
-    start = time.clock()
+    start = time.process_time()
     print("reading data")
     # if there are a large number of snapshots to read, read in parallel
     # only read in parallel if worthwhile, specifically if large number of snapshots and snapshots are ascii
@@ -842,7 +842,7 @@ def ReadHaloPropertiesAcrossSnapshots(numsnaps, snaplistfname, inputtype, iseper
             print("reading ", catfilename)
             halodata[j], ngtot[j], atime[j] = ReadPropertyFile(
                 catfilename, inputtype, iseperatefiles, iverbose, desiredfields)
-    print("data read in ", time.clock()-start)
+    print("data read in ", time.process_time()-start)
     return halodata, ngtot, atime
 
 
@@ -853,7 +853,7 @@ def ReadCrossCatalogList(fname, meritlim=0.1, iverbose=0):
     """
     return []
     """
-    start = time.clock()
+    start = time.process_time()
     if (iverbose):
         print("reading cross catalog")
     dfile = open(fname, "r")
@@ -877,7 +877,7 @@ def ReadCrossCatalogList(fname, meritlim=0.1, iverbose=0):
                 pdata.nmatches[i] += 1
     dfile.close()
     if (iverbose):
-        print("done reading cross catalog ", time.clock()-start)
+        print("done reading cross catalog ", time.process_time()-start)
     return pdata
     """
 
@@ -1471,7 +1471,7 @@ def BuildHierarchy(halodata, iverbose=0):
     #todo this should be deprecated as Hierarchy information is typically already contained in halo information
     """
     halohierarchy = []
-    start = time.clock()
+    start = time.process_time()
     if (iverbose):
         print("setting hierarchy")
     numhalos = len(halodata["npart"])
@@ -1481,7 +1481,7 @@ def BuildHierarchy(halodata, iverbose=0):
     lenhal = len(haloindex[0])
     halohierarchy = [[] for k in range(numhalos)]
     if (iverbose):
-        print("prelims done ", time.clock()-start)
+        print("prelims done ", time.process_time()-start)
     for k in range(lenhal):
         halohierarchy[haloindex[0][k]] = np.where(
             halodata["hostHaloID"] == halodata["ID"][haloindex[0][k]])
@@ -1495,7 +1495,7 @@ def BuildHierarchy(halodata, iverbose=0):
             halohierarchy[hid] = np.append(np.int32(halohierarchy[hid]), halohierarchy[k])
     """
     if (iverbose):
-        print("hierarchy set in read in ", time.clock()-start)
+        print("hierarchy set in read in ", time.process_time()-start)
     return halohierarchy
 
 
@@ -1622,18 +1622,18 @@ def BuildTemporalHeadTail(numsnaps, tree, numhalos, halodata, TEMPORALHALOIDVAL=
         iparallel = -1  # no parallel at all
     iparallel = -1
 
-    totstart = time.clock()
+    totstart = time.process_time()
 
     if (iparallel == 1):
         # need to copy halodata as this will be altered
         if (iverbose > 0):
             print("copying halo")
             sys.stdout.flush()
-        start = time.clock()
+        start = time.process_time()
         mphalodata = manager.list([manager.dict(halodata[k])
                                    for k in range(snapshotoffset,snapshotoffset+numsnaps)])
         if (iverbose > 0):
-            print("done", time.clock()-start)
+            print("done", time.process_time()-start)
             sys.stdout.flush()
 
     for istart in range(snapshotoffset,snapshotoffset+numsnaps):
@@ -1655,7 +1655,7 @@ def BuildTemporalHeadTail(numsnaps, tree, numhalos, halodata, TEMPORALHALOIDVAL=
                 sys.stdout.flush()
             # now for each chunk run a set of proceses
             for j in range(nchunks):
-                start = time.clock()
+                start = time.process_time()
                 offset = j*nthreads*chunksize
                 # if last chunk then must adjust nthreads
                 if (j == nchunks-1):
@@ -1683,7 +1683,7 @@ def BuildTemporalHeadTail(numsnaps, tree, numhalos, halodata, TEMPORALHALOIDVAL=
                     p.join()
                 if (iverbose > 1):
                     print((offset+j*nthreads*chunksize) /
-                          float(numhalos[istart]), " done in", time.clock()-start)
+                          float(numhalos[istart]), " done in", time.process_time()-start)
                     sys.stdout.flush()
         # otherwise just single
         else:
@@ -1695,19 +1695,19 @@ def BuildTemporalHeadTail(numsnaps, tree, numhalos, halodata, TEMPORALHALOIDVAL=
                 # set the iparallel flag to 0 so that all subsequent snapshots (which should have fewer objects) not run in parallel
                 # this is principly to minimize the amount of copying between manager based parallel structures and the halo/tree catalogs
                 iparallel = 0
-            start = time.clock()
+            start = time.process_time()
             chunksize = max(int(0.10*numhalos[istart]), 10)
             for j in range(numhalos[istart]):
                 # start at this snapshot
-                #start = time.clock()
+                #start = time.process_time()
                 TraceMainProgen(istart, j, numsnaps, numhalos,
                                 halodata, tree, TEMPORALHALOIDVAL)
                 if (j % chunksize == 0 and j > 0):
                     if (iverbose > 1):
                         print(
-                            "done", j/float(numhalos[istart]), "in", time.clock()-start)
+                            "done", j/float(numhalos[istart]), "in", time.process_time()-start)
                         sys.stdout.flush()
-                    start = time.clock()
+                    start = time.process_time()
     if (iverbose > 0):
         print("done with first bit")
         sys.stdout.flush()
@@ -1742,7 +1742,7 @@ def BuildTemporalHeadTail(numsnaps, tree, numhalos, halodata, TEMPORALHALOIDVAL=
                     # store the tail of the next head
                     headtailid, headtailsnap = halodata[headsnap]['Tail'][
                         headindex], halodata[headsnap]['TailSnap'][headindex]
-    print("Done building", time.clock()-totstart)
+    print("Done building", time.process_time()-totstart)
     sys.stdout.flush()
 
 
@@ -1893,15 +1893,15 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
         iparallel = -1  # no parallel at all
     iparallel = -1
 
-    totstart = time.clock()
-    start0=time.clock()
+    totstart = time.process_time()
+    start0=time.process_time()
 
     if (ireverseorder):
         snaplist = range(snapshotoffset+numsnaps-1, snapshotoffset-1, -1)
     else:
         snaplist = range(snapshotoffset,snapshotoffset+numsnaps)
     for istart in snaplist:
-        start2=time.clock()
+        start2=time.process_time()
         if (iverbose > 0):
             print('starting head/tail at snapshot ', istart, ' containing ', numhalos[istart], 'halos')
         if (numhalos[istart] == 0): continue
@@ -2009,10 +2009,10 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
         wdata = None
         descencheck = None
         if (iverbose > 0):
-            print('finished in', time.clock()-start2)
+            print('finished in', time.process_time()-start2)
             sys.stdout.flush()
     if (iverbose > 0):
-        print("done with first bit, setting the main branches walking backward",time.clock()-start0)
+        print("done with first bit, setting the main branches walking backward",time.process_time()-start0)
         sys.stdout.flush()
     # now have walked all the main branches and set the root tail, head and tail values
     # in case halo data is with late times at beginning need to process items in reverse
@@ -2098,7 +2098,7 @@ def BuildTemporalHeadTailDescendant(numsnaps, tree, numhalos, halodata, TEMPORAL
         maindescenindex = None
         maindescensnaporder = None
 
-    print("Done building", time.clock()-totstart)
+    print("Done building", time.process_time()-totstart)
 
 
 def GetProgenLength(halodata, haloindex, halosnap, haloid, atime, TEMPORALHALOIDVAL, endreftime=-1):
@@ -2148,7 +2148,7 @@ def IdentifyMergers(numsnaps, tree, numhalos, halodata, boxsize, hval, atime, ME
     if (len(pos_tree) == 0):
         pos = [[]for j in range(snapshotoffset,snapshotoffset+numsnaps)]
         pos_tree = [[]for j in range(snapshotoffset,snapshotoffset+numsnaps)]
-        start = time.clock()
+        start = time.process_time()
         if (iverbose):
             print("tree build")
         for j in range(snapshotoffset,snapshotoffset+numsnaps):
@@ -2158,7 +2158,7 @@ def IdentifyMergers(numsnaps, tree, numhalos, halodata, boxsize, hval, atime, ME
                     [halodata[j]["Xc"], halodata[j]["Yc"], halodata[j]["Zc"]]))
                 pos_tree[j] = spatial.cKDTree(pos[j], boxsize=boxval)
         if (iverbose):
-            print("done ", time.clock()-start)
+            print("done ", time.process_time()-start)
     # else assume tree has been passed
     for j in range(snapshotoffset,snapshotoffset+numsnaps):
         if (numhalos[j] == 0):
@@ -2169,7 +2169,7 @@ def IdentifyMergers(numsnaps, tree, numhalos, halodata, boxsize, hval, atime, ME
         mergercut = np.where(halodata[j]["LastMergerRatio"][partcutwdata] < 0)
         hids = np.asarray(halodata[j]["ID"][partcutwdata]
                           [mergercut], dtype=np.uint64)
-        start = time.clock()
+        start = time.process_time()
         if (iverbose):
             print("Processing ", len(hids))
         if (len(hids) == 0):
@@ -2332,7 +2332,7 @@ def IdentifyMergers(numsnaps, tree, numhalos, halodata, boxsize, hval, atime, ME
                 numprog = tree[halosnap]["Num_progen"][haloindex]
                 # if at end of line then move up and set last major merger to 0
         if (iverbose):
-            print("Done snap", j, time.clock()-start)
+            print("Done snap", j, time.process_time()-start)
 
 
 def generate_sublinks(numhalos, halodata, iverbose=0):
@@ -2397,14 +2397,14 @@ def GenerateSubhaloLinks(numsnaps, numhalos, halodata, TEMPORALHALOIDVAL=1000000
         halodata[j]["NextSubhalo"] = copy.deepcopy(halodata[j]["ID"])
         halodata[j]["PreviousSubhalo"] = copy.deepcopy(halodata[j]["ID"])
     # iterate over all host halos and set their subhalo links
-    start = time.clock()
+    start = time.process_time()
     nthreads = 1
     if (iparallel):
         manager = mp.Manager()
         nthreads = int(min(mp.cpu_count(), numsnaps))
         print("Number of threads is ", nthreads)
     for j in range(0, numsnaps, nthreads):
-        start2 = time.clock()
+        start2 = time.process_time()
         if (iparallel):
             activenthreads = nthreads
             if (numsnaps-1-j < activenthreads):
@@ -2416,15 +2416,15 @@ def GenerateSubhaloLinks(numsnaps, numhalos, halodata, TEMPORALHALOIDVAL=1000000
             for p in processes:
                 p.join()
             if (iverbose):
-                print("Done snaps", j, "to", j+nthreads, time.clock()-start2)
+                print("Done snaps", j, "to", j+nthreads, time.process_time()-start2)
                 sys.stdout.flush()
 
         else:
             generate_sublinks(numhalos[j], halodata[j], iverbose)
             if (iverbose):
-                print("Done snap", j, time.clock()-start2)
+                print("Done snap", j, time.process_time()-start2)
                 sys.stdout.flush()
-    print("Done subhalolinks ", time.clock()-start)
+    print("Done subhalolinks ", time.process_time()-start)
     sys.stdout.flush()
 
 
@@ -2457,13 +2457,13 @@ def GenerateProgenitorLinks(numsnaps, numhalos, halodata, ireversesnaporder=Fals
         halodata[j]["PreviousProgenitor"] = halodata[j]["LeftTail"]
         halodata[j]["NextProgenitor"] = halodata[j]["RightTail"]
     # move backward in time and identify all unique heads
-    start = time.clock()
+    start = time.process_time()
     if (ireversesnaporder):
         snaplist = range(1, numsnaps)
     else:
         snaplist = range(numsnaps-2, -1, -1)
     for j in snaplist:
-        start2 = time.clock()
+        start2 = time.process_time()
         if (numhalos[j] == 0):
             continue
         if (numhalos[j+1] == 0):
@@ -2528,9 +2528,9 @@ def GenerateProgenitorLinks(numsnaps, numhalos, halodata, ireversesnaporder=Fals
         index, snap = progens[-1], progenssnaps[-1]
         halodata[snap]['RightTail'][index] = halodata[snap]['ID'][index]
         if (iverbose):
-            print("Done snap", j, time.clock()-start2)
+            print("Done snap", j, time.process_time()-start2)
             sys.stdout.flush()
-    print("Done progenitor links ", time.clock()-start)
+    print("Done progenitor links ", time.process_time()-start)
     sys.stdout.flush()
 
 
@@ -2598,13 +2598,13 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
         halodata[j]["ForestLevel"] = np.ones(numhalos[j], dtype=np.int32)*-1
     # built KD tree to quickly search for near neighbours. only build if not passed.
     if (ispatialintflag):
-        start = time.clock()
+        start = time.process_time()
         boxsize = cosmo['BoxSize']
         hval = cosmo['Hubble_param']
         if (len(pos_tree) == 0):
             pos = [[]for j in range(snapshotoffset,snapshotoffset+numsnaps)]
             pos_tree = [[]for j in range(snapshotoffset,snapshotoffset+numsnaps)]
-            start = time.clock()
+            start = time.process_time()
             if (iverbose):
                 print("KD tree build")
                 sys.stdout.flush()
@@ -2615,14 +2615,14 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
                         [halodata[j]["Xc"], halodata[j]["Yc"], halodata[j]["Zc"]]))
                     pos_tree[j] = spatial.cKDTree(pos[j], boxsize=boxval)
             if (iverbose):
-                print("done ", time.clock()-start)
+                print("done ", time.process_time()-start)
                 sys.stdout.flush()
 
     # now start marching backwards in time from root heads
     # identifying all subhaloes that have every been subhaloes for long enough
     # and all progenitors and group them together into the same forest id
     forestidval = 1
-    start = time.clock()
+    start = time.process_time()
     # for j in range(snapshotoffset,snapshotoffset+numsnaps):
     # set the direction of how the data will be processed
     if (ireversesnaporder):
@@ -2631,7 +2631,7 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
         snaplist = np.arange(numsnaps-1, -1, -1)
     # first pass assigning forests based on FOF and subs
     offset = 0
-    start2 = time.clock()
+    start2 = time.process_time()
     print('starting first pass in producing forest ids using', nsnapsearch,
           'snapshots being serached and', TEMPORALHALOIDVAL, 'defining temporal id')
     sys.stdout.flush()
@@ -2650,7 +2650,7 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
         [halodata[i]['ForestID'] for i in range(snapshotoffset,snapshotoffset+numsnaps)]), return_counts=True)
     numforests = len(ForestIDs)
     maxforest = np.max(ForestSize)
-    print('finished first pass', time.clock()-start2,
+    print('finished first pass', time.process_time()-start2,
           'have ', numforests, 'initial forests',
           'with largest forest containing ', maxforest, '(sub)halos')
     sys.stdout.flush()
@@ -2662,14 +2662,14 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
     ForestIDs = ForestSize = None
 
     # now proceed to find new mappings
-    start1 = time.clock()
+    start1 = time.process_time()
 
     #above handles primary progenitor/substructure but now also need to handle secondary progenitors
     #particularly of objects with no primary progenitor
     numloops = 0
     while (True):
         newforests = 0
-        start2 = time.clock()
+        start2 = time.process_time()
         if (iverbose):
             print('walking forward in time to identify forest id mappings')
             sys.stdout.flush()
@@ -2679,7 +2679,7 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
         for j in snaplist:
             if (numhalos[j] == 0):
                 continue
-            start3 = time.clock()
+            start3 = time.process_time()
             if (ireversesnaporder):
                 endsnapsearch = max(0, j-nsnapsearch-1)
                 snaplist2 = np.arange(j-1, endsnapsearch, -1, dtype=np.int32)
@@ -2724,10 +2724,10 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
                         incforests += 1
         if (iverbose):
             print('done walking forward, found  ', newforests, ' new forest links at ',
-                  numloops, ' loop in a time of ', time.clock()-start2)
+                  numloops, ' loop in a time of ', time.process_time()-start2)
             sys.stdout.flush()
         # update forest ids using map
-        start2 = time.clock()
+        start2 = time.process_time()
         for j in range(snapshotoffset,snapshotoffset+numsnaps):
             if (numhalos[j] == 0):
                 continue
@@ -2736,12 +2736,12 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
         if (newforests == 0):
             break
         if (iverbose):
-            print('Finished remapping in', time.clock()-start2)
+            print('Finished remapping in', time.process_time()-start2)
             sys.stdout.flush()
         numloops += 1
 
     print('Done forests in %d in a time of %f' %
-          (numloops, time.clock()-start1))
+          (numloops, time.process_time()-start1))
     sys.stdout.flush()
 
     # get the size of each forest
@@ -2802,7 +2802,7 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
     ForestSizeStats['Max_forest_fof_groups_size'] = np.max(cumcounts_fof)
     ForestSizeStats['Max_forest_fof_groups_ID'] = ForestIDs[np.argmax(cumcounts_fof)]
 
-    start2 = time.clock()
+    start2 = time.process_time()
     if (icheckforest):
         # first identify all subhalos and see if any have subhalo connections with different than their host
         if (ireversesnaporder):
@@ -2855,7 +2855,7 @@ def GenerateForest(numsnaps, numhalos, halodata, atime, nsnapsearch=4,
             return []
 
     # then return this
-    print("Done generating forest", time.clock()-start)
+    print("Done generating forest", time.process_time()-start)
     sys.stdout.flush()
     return ForestSizeStats
 
@@ -3386,6 +3386,78 @@ def WriteForest(basename, numsnaps,
         hdffile.close()
         print('Done')
 
+def ReadForest(basename, desiredfields=[], iverbose=False):
+    """
+    Read forest file HDF file with base filename fname.
+
+    Parameters
+    ----------
+
+    Returns
+    -------
+    halo catalogs, trees, etc
+    """
+
+    headergrpname = "Header/"
+    simgrpname = "Simulation/"
+    unitgrpname = "Units/"
+
+    fname = basename+'.hdf5.%d'%0
+    hdffile = h5py.File(fname, 'r')
+    # first get number of files
+    numsnaps = np.int64(hdffile['Header'].attrs["NSnaps"])
+    nfiles = np.int64(hdffile['Header'].attrs["NFiles"])
+
+    # allocate memory
+    halodata = [dict() for i in range(numsnaps)]
+    numhalos = np.zeros(numsnaps, dtype=np.int64)
+    atime = np.zeros(numsnaps)
+    simdata = dict()
+    unitdata = dict()
+
+    # load simulation data
+    fieldnames = [str(n)
+                  for n in hdffile[headergrpname+simgrpname].attrs.keys()]
+    for fieldname in fieldnames:
+        simdata[fieldname] = hdffile[headergrpname +
+                                       simgrpname].attrs[fieldname]
+
+    # load unit data
+    fieldnames = [str(n)
+                  for n in hdffile[headergrpname+unitgrpname].attrs.keys()]
+    for fieldname in fieldnames:
+        unitdata[fieldname] = hdffile[headergrpname +
+                                      unitgrpname].attrs[fieldname]
+    if (len(desiredfields) > 0):
+        fieldnames = desiredfields
+    else:
+        fieldnames = [str(n) for n in hdffile['Snap_000'].keys()]
+    for i in range(numsnaps):
+        for fieldname in fieldnames:
+            halodata[i][fieldname] = np.array([], dtype=hdffile['Snap_000'][fieldname].dtype)
+
+    hdffile.close()
+
+    for i in range(nfiles):
+        fname = basename+'.hdf5.%d'%0
+        hdffile = h5py.File(fname, 'r')
+        # for each snap load the appropriate group
+        start = time.process_time()
+        for i in range(numsnaps):
+            snapgrpname = "Snap_%03d/" % i
+            if (iverbose == True):
+                print("Reading ", snapgrpname)
+            isnap = hdffile[snapgrpname].attrs["Snapnum"]
+            atime[isnap] = hdffile[snapgrpname].attrs["scalefactor"]
+            numhalos[isnap] += hdffile[snapgrpname].attrs["NHalos"]
+            for catvalue in fieldnames:
+                halodata[isnap][catvalue] = np.concatenate([halodata[isnap][catvalue],np.array(
+                    hdffile[snapgrpname+catvalue])])
+        hdffile.close()
+    print("read halo data ", time.process_time()-start)
+
+    return halodata, numhalos, atime, simdata, unitdata
+
 def ForestSorter(basename, isortorder = 'random', ibackup = True):
     """
     Sorts a forest file and remaps halo IDs.
@@ -3490,7 +3562,7 @@ def ForestSorter(basename, isortorder = 'random', ibackup = True):
 
     # reorder file containing meta information
     print('Reordering forest stats data ...')
-    time1 = time.clock()
+    time1 = time.process_time()
     fname = basename+'.foreststats.hdf5'
     hdffile = h5py.File(fname, 'r+')
     forestgrp = hdffile['ForestInfo']
@@ -3509,7 +3581,7 @@ def ForestSorter(basename, isortorder = 'random', ibackup = True):
         data = snapgrp['NumFOFGroupsInForest']
         data[:] = numfofs
     hdffile.close()
-    print('Done', time.clock()-time1)
+    print('Done', time.process_time()-time1)
 
     for ifile in range(nfiles):
         fname = basename+'.hdf5.%d'%ifile
@@ -3520,7 +3592,7 @@ def ForestSorter(basename, isortorder = 'random', ibackup = True):
         #store the ids and the newids to map stuff
         alloldids = np.array([], dtype=np.int64)
         allnewids = np.array([], dtype=np.int64)
-        time1 = time.clock()
+        time1 = time.process_time()
         for i in range(numsnaps):
             snapkey = "Snap_%03d" % i
             numhalos = np.int64(hdffile[snapkey].attrs['NHalos'])
@@ -3552,14 +3624,14 @@ def ForestSorter(basename, isortorder = 'random', ibackup = True):
             data[:] = newids
 
         #now go over temporal and subhalo fields and update as necessary
-        print('Finished pass and now have map of new ids to old ids', time.clock()-time1)
-        time1 = time.clock()
+        print('Finished pass and now have map of new ids to old ids', time.process_time()-time1)
+        time1 = time.process_time()
         for i in range(numsnaps):
             snapkey = "Snap_%03d" % i
             numhalos = np.int32(hdffile[snapkey].attrs['NHalos'])
             if (numhalos == 0): continue
             print('Processing',snapkey)
-            time2 = time.clock()
+            time2 = time.process_time()
             for propkey in temporalkeys:
                 olddata = np.array(hdffile[snapkey][propkey])
                 olddata_unique, olddata_unique_inverse = np.unique(olddata, return_inverse = True)
@@ -3583,7 +3655,7 @@ def ForestSorter(basename, isortorder = 'random', ibackup = True):
                     newdata = allnewids[x_ind[olddata_unique_inverse]]
                 data = hdffile[snapkey][propkey]
                 data[:] = newdata
-            print('Done', snapkey, 'containing', numhalos, 'in', time.clock()-time2)
+            print('Done', snapkey, 'containing', numhalos, 'in', time.process_time()-time2)
 
         #now update the forest info in the file
         forestgrp = hdffile['ForestInfoInFile']
@@ -3612,7 +3684,7 @@ def ForestSorter(basename, isortorder = 'random', ibackup = True):
         hdffile.create_group('ID_mapping')
         hdffile['ID_mapping'].create_dataset('IDs_old', data = alloldids)
         hdffile['ID_mapping'].create_dataset('IDs_new', data = allnewids)
-        print('Finished updating data ', time.clock()-time1)
+        print('Finished updating data ', time.process_time()-time1)
         hdffile.close()
 
 def ForestFileAddMetaData(basename):
@@ -3648,7 +3720,7 @@ def ForestFileAddMetaData(basename):
     for ifile in range(nfiles):
         fname = basename+'.hdf5.%d'%ifile
         hdffile = h5py.File(fname, 'a')
-        time1 = time.clock()
+        time1 = time.process_time()
         nforests = np.uint64(hdffile['ForestInfoInFile'].attrs['NForestsInFile'])
         for i in range(numsnaps):
             snapkey = "Snap_%03d" % i
@@ -3678,7 +3750,7 @@ def ForestFileAddMetaData(basename):
             hdffile['ForestInfoInFile'].create_group(snapkey)
             hdffile['ForestInfoInFile'][snapkey]['NHalosPerForestInSnap'] = hdffile[snapkey]['NHalosPerForestInSnap']
             hdffile['ForestInfoInFile'][snapkey]["ForestOffsetPerSnap"] = hdffile[snapkey]['ForestOffsetPerSnap']
-        print('Finished updating data ', time.clock()-time1)
+        print('Finished updating data ', time.process_time()-time1)
         hdffile.close()
 
 def ForceBiDirectionalTreeInForestFile(basename):
@@ -3714,7 +3786,7 @@ def ForceBiDirectionalTreeInForestFile(basename):
     for ifile in range(nfiles):
         fname = basename+'.hdf5.%d'%ifile
         hdffile = h5py.File(fname, 'a')
-        time1 = time.clock()
+        time1 = time.process_time()
         for i in range(numsnaps):
             snapkey = "Snap_%03d" % i
             numhalos = np.int32(hdffile[snapkey].attrs['NHalos'])
@@ -3737,7 +3809,7 @@ def ForceBiDirectionalTreeInForestFile(basename):
                 newdata[descenindex[activedescens][wdata]] = ids[activedescens][wdata]
                 data = hdffile[snapkey2]['Progenitor']
                 data[:] = newdata
-        print('Finished updating data ', time.clock()-time1)
+        print('Finished updating data ', time.process_time()-time1)
         hdffile.close()
 
 def PruneForest(basename, forestsizelimit = 2, ibackup = True):
@@ -3816,7 +3888,7 @@ def PruneForest(basename, forestsizelimit = 2, ibackup = True):
             subprocess.call(['cp', fname, newfname])
 
     print('Updating data ...')
-    time1 = time.clock()
+    time1 = time.process_time()
     fname = basename+'.foreststats.hdf5'
     hdffile = h5py.File(fname, 'a')
     forestgrp = hdffile['ForestInfo']
@@ -3850,12 +3922,12 @@ def PruneForest(basename, forestsizelimit = 2, ibackup = True):
         #snapgrp.attrs['MaxForestID'] = forestdata['Snapshots']['Max_forest_ID'][snapkey]
         #snapgrp.attrs['MaxForestFOFGroupSize'] = forestdata['Snapshots']['Max_forest_fof_groups_size'][snapkey]
         #snapgrp.attrs['MaxForestFOFGroupID'] = forestdata['Snapshots']['Max_forest_fof_groups_ID'][snapkey]
-    print('metadata updated', time.clock()-time1)
+    print('metadata updated', time.process_time()-time1)
     hdffile.close()
 
     newnumforestinfiles = np.zeros(nfiles, dtype=np.int64)
     for ifile in range(nfiles):
-        time1 = time.clock()
+        time1 = time.process_time()
         fname = basename+'.hdf5.%d'%ifile
         print('updating', fname)
         hdffile = h5py.File(fname, 'a')
@@ -3894,7 +3966,7 @@ def PruneForest(basename, forestsizelimit = 2, ibackup = True):
             for aliaskey in aliasedkeys:
                 hdffile[snapkey][aliaskey] = hdffile[snapkey][aliasedkeyspropkeymap[aliaskey]]
             hdffile[snapkey].attrs['NHalos'] = activeforestindex.size
-        print('Finished updating data ', time.clock()-time1)
+        print('Finished updating data ', time.process_time()-time1)
         hdffile.close()
 
     #last update on number of forests per file
@@ -4181,7 +4253,7 @@ def ReadUnifiedTreeandHaloCatalog(fname, desiredfields=[], iverbose=False, ireve
                                       unitgrpname].attrs[fieldname]
 
     # for each snap load the appropriate group
-    start = time.clock()
+    start = time.process_time()
     for i in range(numsnaps):
         if (ireversesnaporder == True):
             snapgrpname = "Snap_%03d/" % (numsnaps-1-i)
@@ -4200,7 +4272,7 @@ def ReadUnifiedTreeandHaloCatalog(fname, desiredfields=[], iverbose=False, ireve
             halodata[isnap][catvalue] = np.array(
                 hdffile[snapgrpname+catvalue])
     hdffile.close()
-    print("read halo data ", time.clock()-start)
+    print("read halo data ", time.process_time()-start)
     return halodata, numhalos, atime, simdata, unitdata
 
 
@@ -5254,8 +5326,8 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
 
 
     """
-    start = time.clock()
-    start0 = time.clock()
+    start = time.process_time()
+    start0 = time.process_time()
     print('Starting to fix branches, examing',np.sum(numhalos),'across',numsnaps)
     SimulationInfo = copy.deepcopy(halodata[0]['SimulationInfo'])
     UnitInfo = copy.deepcopy(halodata[0]['UnitInfo'])
@@ -5273,7 +5345,7 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
                 halodata[i][key] /= halodata[i]['SimulationInfo']['ScaleFactor']
         # extracted period from first snap so can use the scale factor stored in simulation info
         period /= SimulationInfo['ScaleFactor']
-    print(time.clock()-start0)
+    print(time.process_time()-start0)
     # store number of fixes
     fixkeylist = ['TotalOutliers', 'HaloOutliers', 'SubOutliers',
                   'AfterFixTotalOutliers', 'AfterFixHaloOutliers', 'AfterFixSubOutliers',
@@ -5284,7 +5356,7 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
     for key in fixkeylist:
         nfix[key]= np.zeros(numsnaps)
 
-    start1=time.clock()
+    start1=time.process_time()
 
     temparray = {'RootHead':np.array([], dtype=np.int64), 'ID': np.array([], dtype=np.int64), 'npart': np.array([], dtype=np.int32),
                 'Descen': np.array([], dtype=np.int64), 'Rank': np.array([], dtype=np.int32), 'Merit': np.array([], np.float32),
@@ -5370,10 +5442,10 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
                 secondaryProgenList['Merit'] = np.concatenate([secondaryProgenList['Merit'],temptemparray])
     print('Finished building temporary array for quick search containing ',num_with_more_descen)
     print('Finished building temporary secondary progenitor array for quick search containing ',num_secondary_progen)
-    print('in',time.clock()-start1)
+    print('in',time.process_time()-start1)
 
     #find all possible matches to objects with no primary progenitor
-    start1 = time.clock()
+    start1 = time.process_time()
     noprogID = np.array([],dtype=np.int64)
     noprogRootHead = np.array([],dtype=np.int64)
     #noprognpart = np.array([],dtype=np.int64)
@@ -5432,7 +5504,7 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
     print('Finished determining if objects have possible merge origins.\n'
           'Number without progenitors:',noprogID.size,
           'Number with a possible merger candidate', mergeSize)
-    print('Finished initalization in ',time.clock()-start1)
+    print('Finished initalization in ',time.process_time()-start1)
     print('Now processing ... ')
 
     # have object with no progenitor
@@ -5666,7 +5738,7 @@ def FixTruncationBranchSwapsInTreeDescendant(numsnaps, treedata, halodata, numha
         nfix['AfterFixTotalOutliers'][i] = noprog.size
         nfix['AfterFixHaloOutliers'][i] = np.where(halodata[i]['hostHaloID'][noprog] == -1)[0].size
         nfix['AfterFixSubOutliers'][i] = nfix['AfterFixTotalOutliers'][i] - nfix['AfterFixHaloOutliers'][i]
-    print('Done fixing branches', time.clock()-start)
+    print('Done fixing branches', time.process_time()-start)
     print('For', np.sum(numhalos), 'across cosmic time')
     print('Corrections are:')
     for key in fixkeylist:
@@ -5701,8 +5773,8 @@ def CleanSecondaryProgenitorsFromNoPrimaryProgenObjectsTreeDescendant(numsnaps, 
     if moving foward is main branch or not.
     """
 
-    start = time.clock()
-    start0 = time.clock()
+    start = time.process_time()
+    start0 = time.process_time()
     print('Starting secondary progenitor clean-up examing',np.sum(numhalos),'across',numsnaps)
     # store number of fixes
     fixkeylist = ['NoPrimary', 'SecondarytoNoPrimary', 'HostHaloFix', 'DescendantFix', 'NoFix']
@@ -5713,7 +5785,7 @@ def CleanSecondaryProgenitorsFromNoPrimaryProgenObjectsTreeDescendant(numsnaps, 
                             'ID': np.array([], dtype=np.int64),
                             }
     num_secondary_progen = 0
-    start1=time.clock()
+    start1=time.process_time()
     # make flatten array of tree structure within temporal search window to
     # speed up process of searching for related objects
     for isearch in range(numsnaps):
@@ -5738,10 +5810,10 @@ def CleanSecondaryProgenitorsFromNoPrimaryProgenObjectsTreeDescendant(numsnaps, 
         secondaryProgenList['Head'] = np.concatenate([secondaryProgenList['Head'],halodata[isearch]['Head'][wdata]])
         secondaryProgenList['ID'] = np.concatenate([secondaryProgenList['ID'],halodata[isearch]['ID'][wdata]])
     print('Finished building temporary secondary progenitor array for quick search containing ',num_secondary_progen)
-    print('in',time.clock()-start1)
+    print('in',time.process_time()-start1)
 
     #find all objects with no primary progenitor
-    start1 = time.clock()
+    start1 = time.process_time()
     for i in range(numsnaps-1):
         if (numhalos[i] == 0):
             continue
@@ -5810,7 +5882,7 @@ def CleanSecondaryProgenitorsFromNoPrimaryProgenObjectsTreeDescendant(numsnaps, 
             halodata[sSnap]['HeadSnap'][sIndex] = curHeadSnap
             nfix['DescendantFix'][i] += 1
 
-    print('Done adjusting secondaries ', time.clock()-start1)
+    print('Done adjusting secondaries ', time.process_time()-start1)
     print('For', np.sum(numhalos), 'across cosmic time')
     print('Corrections are:')
     for key in fixkeylist:
