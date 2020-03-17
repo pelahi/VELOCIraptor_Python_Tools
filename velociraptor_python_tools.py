@@ -3152,7 +3152,8 @@ def WriteForest(basename, numsnaps,
     simdata={'Omega_m': 1.0, 'Omega_b': 0., 'Omega_Lambda':0., 'Hubble_param': 1.0, 'BoxSize': 1.0, 'Sigma8': 1.0},
     unitdata={'UnitLength_in_Mpc': 1.0, 'UnitVelocity_in_kms': 1.0, 'UnitMass_in_Msol': 1.0, 'Flag_physical_comoving': True, 'Flag_hubble_flow': False},
     hfconfiginfo=dict(),
-    iverbose = 0, iorderhalosbyforest = False, isplit = False, isplitbyforest = False, numsplitsperdim = 1
+    iverbose = 0, iorderhalosbyforest = False, isplit = False, isplitbyforest = False, numsplitsperdim = 1,
+    icompress = False,
     ):
 
     """
@@ -3253,10 +3254,13 @@ def WriteForest(basename, numsnaps,
     forestgrp.attrs['MaxForestFOFGroupSize'] = forestdata['Max_forest_fof_groups_size']
     forestgrp.attrs['MaxForestFOFGroupID'] = forestdata['Max_forest_fof_groups_ID']
 
-    forestgrp.create_dataset(
-        'ForestIDs', data=forestdata['ForestIDs'], compression="gzip", compression_opts=6)
-    forestgrp.create_dataset(
-        'ForestSizes', data=forestdata['ForestSizes'], compression="gzip", compression_opts=6)
+    HDF5WriteDataset(forestgrp, 'ForestIDs', forestdata['ForestIDs'], icompress)
+    HDF5WriteDataset(forestgrp, 'ForestSizes', forestdata['ForestSizes'], icompress)
+    # forestgrp.create_dataset(
+    #     'ForestIDs', data=forestdata['ForestIDs'], compression="gzip", compression_opts=6)
+    # forestgrp.create_dataset(
+    #     'ForestSizes', data=forestdata['ForestSizes'], compression="gzip", compression_opts=6)
+
     forestsnapgrp = forestgrp.create_group('Snaps')
     for i in range(snapshotoffset,snapshotoffset+numsnaps):
         snapnum = i
@@ -3267,14 +3271,19 @@ def WriteForest(basename, numsnaps,
         snapgrp.attrs['MaxForestID'] = forestdata['Snapshots']['Max_forest_ID'][snapkey]
         snapgrp.attrs['MaxForestFOFGroupSize'] = forestdata['Snapshots']['Max_forest_fof_groups_size'][snapkey]
         snapgrp.attrs['MaxForestFOFGroupID'] = forestdata['Snapshots']['Max_forest_fof_groups_ID'][snapkey]
-        snapgrp.create_dataset(
-            'NumHalosInForest', data=forestdata['Snapshots']['Number_of_halos_in_forests'][snapkey], compression="gzip", compression_opts=6)
-        snapgrp.create_dataset(
-            'NumFOFGroupsInForest', data=forestdata['Snapshots']['Number_of_fof_groups_in_forests'][snapkey], compression="gzip", compression_opts=6)
+        HDF5WriteDataset(snapgrp, 'NumHalosInForest',
+            forestdata['Snapshots']['Number_of_halos_in_forests'][snapkey], icompress)
+        HDF5WriteDataset(snapgrp, 'NumFOFGroupsInForest',
+            ['Number_of_fof_groups_in_forests'][snapkey], icompress)
+        # snapgrp.create_dataset(
+        #     'NumHalosInForest', data=forestdata['Snapshots']['Number_of_halos_in_forests'][snapkey], compression="gzip", compression_opts=6)
+        # snapgrp.create_dataset(
+        #     'NumFOFGroupsInForest', data=forestdata['Snapshots']['Number_of_fof_groups_in_forests'][snapkey], compression="gzip", compression_opts=6)
 
     foo, counts = np.unique(forestfile, return_counts=True)
-    forestgrp.create_dataset(
-        'NForestsPerFile', data=counts, compression="gzip", compression_opts=6)
+    HDF5WriteDataset(forestgrp, 'NForestsPerFile', counts, icompress)
+    # forestgrp.create_dataset(
+    #     'NForestsPerFile', data=counts, compression="gzip", compression_opts=6)
     hdffile.close()
     print('Done')
 
@@ -3335,10 +3344,12 @@ def WriteForest(basename, numsnaps,
             activeforest = forestlist
             activeforestsizes = forestdata['ForestSizes']
             activeforestfofsizes = forestdata['Max_forest_fof_groups_size']
-        forestgrp.create_dataset('ForestIDsInFile', data=activeforest,
-            compression="gzip", compression_opts=6)
-        forestgrp.create_dataset('ForestSizesInFile', data=activeforestsizes,
-            compression="gzip", compression_opts=6)
+        HDF5WriteDataset(forestgrp, 'ForestIDsInFile', activeforest, icompress)
+        HDF5WriteDataset(forestgrp, 'ForestSizesInFile', activeforestsizes, icompress)
+        # forestgrp.create_dataset('ForestIDsInFile', data=activeforest,
+        #     compression="gzip", compression_opts=6)
+        # forestgrp.create_dataset('ForestSizesInFile', data=activeforestsizes,
+        #     compression="gzip", compression_opts=6)
         forestgrp.attrs['NForestsInFile'] = activeforest.size
         forestgrp.attrs['MaxForestSizeInFile'] = np.max(activeforestsizes)
         forestgrp.attrs['MaxForestIDInFile'] = activeforest[np.argmax(activeforestsizes)]
@@ -3368,8 +3379,9 @@ def WriteForest(basename, numsnaps,
                 activeforestinsnapsizes[wdata] = uniquecounts
                 nactive = numhalos[i]
             snapgrp.attrs["NHalos"] = nactive
-            snapgrp.create_dataset("NHalosPerForestInSnap", data = activeforestinsnapsizes,
-                compression="gzip", compression_opts=6)
+            HDF5WriteDataset(snapgrp, "NHalosPerForestInSnap", activeforestinsnapsizes, icompress)
+            # snapgrp.create_dataset("NHalosPerForestInSnap", data = activeforestinsnapsizes,
+            #     compression="gzip", compression_opts=6)
 
             #write halo properties
             for key in halodata[i].keys():
@@ -3379,10 +3391,11 @@ def WriteForest(basename, numsnaps,
                     datablock = halodata[i][key]
                 else:
                     datablock = halodata[i][key][activehalos]
-                halogrp=snapgrp.create_dataset(
-                    key, data=datablock, compression="gzip", compression_opts=6)
+                halogrp = HDF5WriteDataset(snapgrp, key, datablock, icompress)
+                # halogrp=snapgrp.create_dataset(
+                #     key, data=datablock, compression="gzip", compression_opts=6)
                 if key in treekeys:
-                    snapgrp[treealiasnames[key]]=halogrp
+                    snapgrp[treealiasnames[key]] = halogrp
         hdffile.close()
         print('Done')
 
@@ -3458,7 +3471,8 @@ def ReadForest(basename, desiredfields=[], iverbose=False):
 
     return halodata, numhalos, atime, simdata, unitdata
 
-def ForestSorter(basename, isortorder = 'random', ibackup = True):
+def ForestSorter(basename, isortorder = 'random', ibackup = True,
+    icompress = False):
     """
     Sorts a forest file and remaps halo IDs.
     The sort fields (or sort keys) we ordered such that the first key will peform the
@@ -3618,8 +3632,9 @@ def ForestSorter(basename, isortorder = 'random', ibackup = True):
                 newdata = np.array(hdffile[snapkey][propkey])[indices]
                 data = hdffile[snapkey][propkey]
                 data[:] = newdata
-            hdffile[snapkey].create_dataset('ID_old',
-                data=ids[indices], dtype=np.int64, compression='gzip', compression_opts=6)
+            HDF5WriteDataset(hdffile[snapkey], 'ID_old', ids[indices], icompress)
+            # hdffile[snapkey].create_dataset('ID_old',
+            #     data=ids[indices], dtype=np.int64, compression='gzip', compression_opts=6)
             data = hdffile[snapkey]['ID']
             data[:] = newids
 
@@ -3682,12 +3697,14 @@ def ForestSorter(basename, isortorder = 'random', ibackup = True):
         #     data[:] = numfofs
 
         hdffile.create_group('ID_mapping')
-        hdffile['ID_mapping'].create_dataset('IDs_old', data = alloldids)
-        hdffile['ID_mapping'].create_dataset('IDs_new', data = allnewids)
+        HDF5WriteDataset(hdffile['ID_mapping'], 'IDs_old', alloldids, icompress)
+        HDF5WriteDataset(hdffile['ID_mapping'], 'IDs_new', allnewids, icompress)
+        # hdffile['ID_mapping'].create_dataset('IDs_old', data = alloldids)
+        # hdffile['ID_mapping'].create_dataset('IDs_new', data = allnewids)
         print('Finished updating data ', time.process_time()-time1)
         hdffile.close()
 
-def ForestFileAddMetaData(basename):
+def ForestFileAddMetaData(basename, icompress = False):
     """
     Add some metadata to forest files
 
@@ -3730,7 +3747,8 @@ def ForestFileAddMetaData(basename):
             offset = np.zeros(nforests, dtype=np.int64)
             if (numhalos > 0):
                 offset[1:] = np.cumsum(np.array(hdffile[snapkey]['NHalosPerForestInSnap']))[:-1]
-            hdffile[snapkey].create_dataset("ForestOffsetPerSnap", data = offset)
+            HDF5WriteDataset(hdffile[snapkey], "ForestOffsetPerSnap", offset, icompress)
+            # hdffile[snapkey].create_dataset("ForestOffsetPerSnap", data = offset)
 
         if ("ForestSizesAllSnaps" not in list(hdffile['ForestInfoInFile'].keys()) and
             "ForestOffsetsAllSnaps" not in list(hdffile['ForestInfoInFile'].keys())):
@@ -3742,8 +3760,12 @@ def ForestFileAddMetaData(basename):
                 forestoffsetsinfile[i][1:] = np.cumsum(forestsizesinfile[i])[:-1]
             forestsizesinfile = forestsizesinfile.transpose()
             forestoffsetsinfile = forestoffsetsinfile.transpose()
-            hdffile['ForestInfoInFile'].create_dataset("ForestSizesAllSnaps", data = forestsizesinfile)
-            hdffile['ForestInfoInFile'].create_dataset("ForestOffsetsAllSnaps", data = forestoffsetsinfile)
+            HDF5WriteDataset(hdffile['ForestInfoInFile'], "ForestSizesAllSnaps",
+                forestsizesinfile, icompress)
+            HDF5WriteDataset(hdffile['ForestInfoInFile'], "ForestOffsetsAllSnaps",
+                forestoffsetsinfile, icompress)
+            # hdffile['ForestInfoInFile'].create_dataset("ForestSizesAllSnaps", data = forestsizesinfile)
+            # hdffile['ForestInfoInFile'].create_dataset("ForestOffsetsAllSnaps", data = forestoffsetsinfile)
 
         for i in range(numsnaps):
             snapkey = "Snap_%03d" % i
@@ -3753,7 +3775,7 @@ def ForestFileAddMetaData(basename):
         print('Finished updating data ', time.process_time()-time1)
         hdffile.close()
 
-def ForceBiDirectionalTreeInForestFile(basename):
+def ForceBiDirectionalTreeInForestFile(basename, icompress = False):
     """
     Forces bi-directional tree in file
 
@@ -3812,7 +3834,8 @@ def ForceBiDirectionalTreeInForestFile(basename):
         print('Finished updating data ', time.process_time()-time1)
         hdffile.close()
 
-def PruneForest(basename, forestsizelimit = 2, ibackup = True):
+def PruneForest(basename, forestsizelimit = 2, ibackup = True,
+    icompress = False):
     """
     Prunes a Forest, removing all those containing <= forestsizelimit halos
 
@@ -3899,10 +3922,12 @@ def PruneForest(basename, forestsizelimit = 2, ibackup = True):
     #forestgrp.attrs['MaxForestFOFGroupID'] = forestdata['Max_forest_fof_groups_ID']
 
     del forestgrp['ForestIDs']
-    forestgrp.create_dataset('ForestIDs', data=forestids[forestselection])
+    HDF5WriteDataset(forestgrp, 'ForestIDs', forestids[forestselection], icompress)
+    # forestgrp.create_dataset('ForestIDs', data=forestids[forestselection])
     forestids = forestids[forestselection]
     del forestgrp['ForestSizes']
-    forestgrp.create_dataset('ForestSizes', data=forestsizes[forestselection])
+    HDF5WriteDataset(forestgrp, 'ForestSizes', forestsizes[forestselection], icompress)
+    # forestgrp.create_dataset('ForestSizes', data=forestsizes[forestselection])
     forestsizes = forestsizes[forestselection]
     forestsnapgrp = forestgrp['Snaps']
     for i in range(numsnaps):
@@ -3913,11 +3938,13 @@ def PruneForest(basename, forestsizelimit = 2, ibackup = True):
         newdata = np.array(data)[forestselection]
         snapgrp.attrs['NumActiveForest'] = np.where(newdata>0)[0].size
         del snapgrp['NumHalosInForest']
-        snapgrp.create_dataset('NumHalosInForest', data=newdata)
+        HDF5WriteDataset(snapgrp, 'NumHalosInForest', newdata)
+        # snapgrp.create_dataset('NumHalosInForest', data=newdata)
         data = snapgrp['NumFOFGroupsInForest']
         newdata = np.array(data)[forestselection]
         del snapgrp['NumFOFGroupsInForest']
-        snapgrp.create_dataset('NumFOFGroupsInForest', data=newdata)
+        HDF5WriteDataset(snapgrp, 'NumFOFGroupsInForest', newdata)
+        # snapgrp.create_dataset('NumFOFGroupsInForest', data=newdata)
         #snapgrp.attrs['MaxForestSize'] = forestdata['Snapshots']['Max_forest_size'][snapkey]
         #snapgrp.attrs['MaxForestID'] = forestdata['Snapshots']['Max_forest_ID'][snapkey]
         #snapgrp.attrs['MaxForestFOFGroupSize'] = forestdata['Snapshots']['Max_forest_fof_groups_size'][snapkey]
@@ -3937,11 +3964,13 @@ def PruneForest(basename, forestsizelimit = 2, ibackup = True):
         newdata, x_ind, y_ind = np.intersect1d(forestids, olddata, return_indices=True)
         newnumforestinfiles[ifile] = y_ind.size
         del forestgrp['ForestIDsInFile']
-        forestgrp.create_dataset('ForestIDsInFile', data=newdata)
+        HDF5WriteDataset(forestgrp, 'ForestIDsInFile', newdata, icompress)
+        # forestgrp.create_dataset('ForestIDsInFile', data=newdata)
         data = forestgrp['ForestSizesInFile']
         newdata = np.array(data)[y_ind]
         del forestgrp['ForestSizesInFile']
-        forestgrp.create_dataset('ForestSizesInFile', data=newdata)
+        HDF5WriteDataset(forestgrp, 'ForestSizesInFile', newdata, icompress)
+        # forestgrp.create_dataset('ForestSizesInFile', data=newdata)
         forestgrp.attrs['NForestsInFile'] = newdata.size
         #forestgrp.attrs['MaxForestSizeInFile'] = np.max(activeforestsizes)
         #forestgrp.attrs['MaxForestIDInFile'] = activeforest[np.argmax(activeforestsizes)]
@@ -3953,7 +3982,8 @@ def PruneForest(basename, forestsizelimit = 2, ibackup = True):
             data = hdffile[snapkey]['NHalosPerForestInSnap']
             newdata = np.array(data)[y_ind]
             del hdffile[snapkey]['NHalosPerForestInSnap']
-            hdffile[snapkey].create_dataset('NHalosPerForestInSnap', data=newdata)
+            HDF5WriteDataset(hdffile[snapkey], 'NHalosPerForestInSnap', newdata, icompress)
+            # hdffile[snapkey].create_dataset('NHalosPerForestInSnap', data=newdata)
             if (numhalos == 0): continue
             allcurrentforests = np.array(hdffile[snapkey]['ForestID'])
             activeforestindex = np.where(np.isin(allcurrentforests, forestids))[0]
@@ -3962,7 +3992,8 @@ def PruneForest(basename, forestsizelimit = 2, ibackup = True):
                 if (propkey in aliasedkeys): continue
                 newdata = np.array(hdffile[snapkey][propkey])[activeforestindex]
                 del hdffile[snapkey][propkey]
-                hdffile[snapkey].create_dataset(propkey, data=newdata)
+                HDF5WriteDataset(hdffile[snapkey], propkey, newdata, icompress)
+                # hdffile[snapkey].create_dataset(propkey, data=newdata)
             for aliaskey in aliasedkeys:
                 hdffile[snapkey][aliaskey] = hdffile[snapkey][aliasedkeyspropkeymap[aliaskey]]
             hdffile[snapkey].attrs['NHalos'] = activeforestindex.size
@@ -5887,6 +5918,18 @@ def CleanSecondaryProgenitorsFromNoPrimaryProgenObjectsTreeDescendant(numsnaps, 
     print('Corrections are:')
     for key in fixkeylist:
         print(key, np.sum(nfix[key]))
+
+"""
+    HDF5 Tools
+"""
+
+def HDF5WriteDataset(hdf5grp, key, data,
+    icompress = False, compress_key = 'gzip', compress_level = 6):
+    if (icompress):
+        return hdf5grp.create_dataset(key, data=data,
+            compression=compress_key, compression_opts=compress_level)
+    else:
+        return hdf5grp.create_dataset(key, data=data)
 
 """
     Conversion Tools
