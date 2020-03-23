@@ -3776,10 +3776,9 @@ def ForestFileAddMetaData(basename, icompress = False):
         hdffile.close()
 
 def ForestFileAddHaloData(basename: str,
-    basehalocatalogname: str,
+    halocatalognames : list,
     desiredfields : list = [],
-    icompress : bool = False,
-    i3digits : bool = True):
+    icompress : bool = False):
     """
     Add some metadata to forest files
 
@@ -3787,7 +3786,7 @@ def ForestFileAddHaloData(basename: str,
     ----------
     basename : String
         Base file name of the forest file.
-    basehalocatalogname : String
+    halocatalognames : list
         Base file name of the halo catalogs from which data will be added
     desiredfields : list of strings
         field names to be extracted from the halo catalogs and added to the forest
@@ -3812,17 +3811,19 @@ def ForestFileAddHaloData(basename: str,
     TEMPORALHALOIDVAL = np.int64(hdffile['Header/TreeBuilder'].attrs['Temporal_halo_id_value'])
     hdffile.close()
 
+    hdffiles = [None for ifile in range(nfiles)]
+    for ifile in range(nfiles):
+        fname = basename+'.hdf5.%d'%ifile
+        hdffiles[ifile] = h5py.File(fname, 'a')
     for i in range(numsnaps):
         snapkey = "Snap_%03d" % i
-        if (i3digits):
-            haloname = basehalocatalogname+'%03d' %i
-        else:
-            haloname = basehalocatalogname+'%03d' %i
+        haloname = halocatalognames[i]
         halodata, numhalos = ReadPropertyFile(haloname, 2, 0, 0, desiredfields)
+        print('Adding halo data from', haloname, 'containing', numhalos)
+        time1 = time.process_time()
         for ifile in range(nfiles):
-            fname = basename+'.hdf5.%d'%ifile
-            hdffile = h5py.File(fname, 'a')
-            time1 = time.process_time()
+            hdffile = hdffiles[ifile]
+            time2 = time.process_time()
             numhalosinforestfile = np.uint64(hdffile[snapkey].attrs['NHalos'])
             if (numhalos != numhalosinforestfile) :
                 activehalodata = dict()
@@ -3834,7 +3835,9 @@ def ForestFileAddHaloData(basename: str,
             for key in desiredfields:
                 halogrp = HDF5WriteDataset(hdffile[snapkey], key, activehalodata[key], icompress)
             halodata[key] = None
-        hdffile.close()
+        print('Finished adding data to files in ', time.process_time() - time1)
+    for ifile in range(nfiles):
+        hdffiles[ifile].close()
 
 def ForceBiDirectionalTreeInForestFile(basename, icompress = False):
     """
