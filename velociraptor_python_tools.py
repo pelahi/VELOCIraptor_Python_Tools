@@ -3274,7 +3274,7 @@ def WriteForest(basename, numsnaps,
         HDF5WriteDataset(snapgrp, 'NumHalosInForest',
             forestdata['Snapshots']['Number_of_halos_in_forests'][snapkey], icompress)
         HDF5WriteDataset(snapgrp, 'NumFOFGroupsInForest',
-            ['Number_of_fof_groups_in_forests'][snapkey], icompress)
+            forestdata['Snapshots']['Number_of_fof_groups_in_forests'][snapkey], icompress)
         # snapgrp.create_dataset(
         #     'NumHalosInForest', data=forestdata['Snapshots']['Number_of_halos_in_forests'][snapkey], compression="gzip", compression_opts=6)
         # snapgrp.create_dataset(
