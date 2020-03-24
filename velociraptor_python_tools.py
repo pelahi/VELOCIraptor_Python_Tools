@@ -4059,6 +4059,7 @@ def PruneForest(basename, forestsizelimit = 2, ibackup = True,
                 HDF5WriteDataset(hdffile[snapkey], propkey, newdata, icompress)
                 # hdffile[snapkey].create_dataset(propkey, data=newdata)
             for aliaskey in aliasedkeys:
+                del hdffile[snapkey][aliaskey]
                 hdffile[snapkey][aliaskey] = hdffile[snapkey][aliasedkeyspropkeymap[aliaskey]]
             hdffile[snapkey].attrs['NHalos'] = activeforestindex.size
         print('Finished updating data ', time.process_time()-time1)
