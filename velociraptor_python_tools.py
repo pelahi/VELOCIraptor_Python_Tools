@@ -3196,7 +3196,7 @@ def WriteForest(basename, numsnaps,
     if (isplit and forestdata['Number_of_forests'] > 100):
         if (isplitbyforest):
             if (iverbose >=1):
-                print('Splitting by forest ...')
+                print('Splitting by forest ...', flush=True)
             #split by forest
             index = np.argsort(forestdata['ForestSizes'])[::-1]
             forestlist = forestdata['ForestIDs'][index]
@@ -3212,13 +3212,13 @@ def WriteForest(basename, numsnaps,
             else:
                 forestfile[lastfile] -= 1
             if (iverbose >=1):
-                print('into', nfiles, 'files')
+                print('into', nfiles, 'files', flush=True)
         else:
             #split by spatial volume, still not implemented. Just write one file
             nfiles = numsplitsperdim*numsplitsperdim*numsplitsperdim
             nfiles = 1
             if (iverbose >=1):
-                print('Splitting spatially ...')
+                print('Splitting spatially ...', flush=True)
             #look at all z=0 halos and split such that do octo split till
             #split the volume into cells of a certain size
             delta = simdata['BoxSize']*atime[-1]/float(numsplitsperdim)
@@ -3227,11 +3227,11 @@ def WriteForest(basename, numsnaps,
             iz = np.array(halodata[-1]['Zc']/delta, dtype=np.int32)
             iindex = ix*numsplitsperdim*numsplitsperdim + iy*numsplitsperdim + iz
             if (iverbose >=1):
-                print('into', nfiles, 'files')
+                print('into', nfiles, 'files', flush=True)
 
     #write file containing forest statistics
     fname = basename+'.foreststats.hdf5'
-    print('Writing forest statistics to ', fname)
+    print('Writing forest statistics to ', fname, flush=True)
     totnumhalos = sum(numhalos)
     totactivehalos = totnumhalos
     hdffile = h5py.File(fname, 'w')
@@ -3285,12 +3285,12 @@ def WriteForest(basename, numsnaps,
     # forestgrp.create_dataset(
     #     'NForestsPerFile', data=counts, compression="gzip", compression_opts=6)
     hdffile.close()
-    print('Done')
+    print('Done', flush=True)
 
-    print('Writing halo+tree+forest data ... ')
+    print('Writing halo+tree+forest data ... ', flush=True)
     for ifile in range(nfiles):
         fname = basename+'.hdf5.%d'%ifile
-        print('Write to ', fname)
+        print('Write to ', fname, flush=True)
         hdffile = h5py.File(fname, 'w')
         headergrp = hdffile.create_group("Header")
 
@@ -3359,7 +3359,7 @@ def WriteForest(basename, numsnaps,
         for i in range(snapshotoffset,snapshotoffset+numsnaps):
             snapnum=i
             if (iverbose >=1):
-                print("writing snapshot ",snapnum)
+                print("writing snapshot ",snapnum, flush=True)
             snapgrp = hdffile.create_group("Snap_%03d" % snapnum)
             snapgrp.attrs["Snapnum"] = snapnum
             snapgrp.attrs["scalefactor"] = atime[i]
@@ -3397,7 +3397,7 @@ def WriteForest(basename, numsnaps,
                 if key in treekeys:
                     snapgrp[treealiasnames[key]] = halogrp
         hdffile.close()
-        print('Done')
+        print('Done', flush=True)
 
 def ReadForest(basename, desiredfields=[], iverbose=False):
     """
@@ -3459,7 +3459,7 @@ def ReadForest(basename, desiredfields=[], iverbose=False):
         for i in range(numsnaps):
             snapgrpname = "Snap_%03d/" % i
             if (iverbose == True):
-                print("Reading ", snapgrpname)
+                print("Reading ", snapgrpname, flush=True)
             isnap = hdffile[snapgrpname].attrs["Snapnum"]
             atime[isnap] = hdffile[snapgrpname].attrs["scalefactor"]
             numhalos[isnap] += hdffile[snapgrpname].attrs["NHalos"]
@@ -3467,7 +3467,7 @@ def ReadForest(basename, desiredfields=[], iverbose=False):
                 halodata[isnap][catvalue] = np.concatenate([halodata[isnap][catvalue],np.array(
                     hdffile[snapgrpname+catvalue])])
         hdffile.close()
-    print("read halo data ", time.process_time()-start)
+    print("read halo data ", time.process_time()-start, flush=True)
 
     return halodata, numhalos, atime, simdata, unitdata
 
@@ -3523,8 +3523,8 @@ def ForestSorter(basename, isortorder = 'random', ibackup = True,
         ]
     sortorderkeys = ['ids', 'sizes', 'random']
     if (isortorder not in sortorderkeys):
-        print('Error: ',isortorder, 'not valid. Sort order can be ',sortorderkeys)
-        print('Exiting without sorting')
+        print('Error: ',isortorder, 'not valid. Sort order can be ',sortorderkeys, flush=True)
+        print('Exiting without sorting', flush=True)
 
     # fields used to determine ordering of halos in file
     sort_fields = ['ForestID', 'hostHaloID', 'npart']
@@ -3565,7 +3565,7 @@ def ForestSorter(basename, isortorder = 'random', ibackup = True,
 
     # back up files if necessary
     if (ibackup):
-        print('Backing up original data')
+        print('Backing up original data', flush=True)
         fname = basename+'.foreststats.hdf5'
         newfname = fname+'.backup'
         subprocess.call(['cp', fname, newfname])
@@ -3575,7 +3575,7 @@ def ForestSorter(basename, isortorder = 'random', ibackup = True,
             subprocess.call(['cp', fname, newfname])
 
     # reorder file containing meta information
-    print('Reordering forest stats data ...')
+    print('Reordering forest stats data ...', flush=True)
     time1 = time.process_time()
     fname = basename+'.foreststats.hdf5'
     hdffile = h5py.File(fname, 'r+')
@@ -3595,12 +3595,12 @@ def ForestSorter(basename, isortorder = 'random', ibackup = True,
         data = snapgrp['NumFOFGroupsInForest']
         data[:] = numfofs
     hdffile.close()
-    print('Done', time.process_time()-time1)
+    print('Done', time.process_time()-time1, flush=True)
 
     for ifile in range(nfiles):
         fname = basename+'.hdf5.%d'%ifile
         hdffile = h5py.File(fname, 'a')
-        print('First pass building id map for file', fname)
+        print('First pass building id map for file', fname, flush=True)
 
         #first pass to resort arrays
         #store the ids and the newids to map stuff
@@ -3639,13 +3639,13 @@ def ForestSorter(basename, isortorder = 'random', ibackup = True,
             data[:] = newids
 
         #now go over temporal and subhalo fields and update as necessary
-        print('Finished pass and now have map of new ids to old ids', time.process_time()-time1)
+        print('Finished pass and now have map of new ids to old ids', time.process_time()-time1, flush=True)
         time1 = time.process_time()
         for i in range(numsnaps):
             snapkey = "Snap_%03d" % i
             numhalos = np.int32(hdffile[snapkey].attrs['NHalos'])
             if (numhalos == 0): continue
-            print('Processing',snapkey)
+            print('Processing',snapkey, flush=True)
             time2 = time.process_time()
             for propkey in temporalkeys:
                 olddata = np.array(hdffile[snapkey][propkey])
@@ -3670,7 +3670,7 @@ def ForestSorter(basename, isortorder = 'random', ibackup = True,
                     newdata = allnewids[x_ind[olddata_unique_inverse]]
                 data = hdffile[snapkey][propkey]
                 data[:] = newdata
-            print('Done', snapkey, 'containing', numhalos, 'in', time.process_time()-time2)
+            print('Done', snapkey, 'containing', numhalos, 'in', time.process_time()-time2, flush=True)
 
         #now update the forest info in the file
         forestgrp = hdffile['ForestInfoInFile']
@@ -3701,7 +3701,7 @@ def ForestSorter(basename, isortorder = 'random', ibackup = True,
         HDF5WriteDataset(hdffile['ID_mapping'], 'IDs_new', allnewids, icompress)
         # hdffile['ID_mapping'].create_dataset('IDs_old', data = alloldids)
         # hdffile['ID_mapping'].create_dataset('IDs_new', data = allnewids)
-        print('Finished updating data ', time.process_time()-time1)
+        print('Finished updating data ', time.process_time()-time1, flush=True)
         hdffile.close()
 
 def ForestFileAddMetaData(basename, icompress = False):
@@ -3772,7 +3772,7 @@ def ForestFileAddMetaData(basename, icompress = False):
             hdffile['ForestInfoInFile'].create_group(snapkey)
             hdffile['ForestInfoInFile'][snapkey]['NHalosPerForestInSnap'] = hdffile[snapkey]['NHalosPerForestInSnap']
             hdffile['ForestInfoInFile'][snapkey]["ForestOffsetPerSnap"] = hdffile[snapkey]['ForestOffsetPerSnap']
-        print('Finished updating data ', time.process_time()-time1)
+        print('Finished updating data ', time.process_time()-time1, flush=True)
         hdffile.close()
 
 def ForestFileAddHaloData(basename: str,
@@ -3819,7 +3819,7 @@ def ForestFileAddHaloData(basename: str,
         snapkey = "Snap_%03d" % i
         haloname = halocatalognames[i]
         halodata, numhalos = ReadPropertyFile(haloname, 2, 0, 0, desiredfields)
-        print('Adding halo data from', haloname, 'containing', numhalos)
+        print('Adding halo data from', haloname, 'containing', numhalos, flush=True)
         time1 = time.process_time()
         for ifile in range(nfiles):
             hdffile = hdffiles[ifile]
@@ -3835,7 +3835,7 @@ def ForestFileAddHaloData(basename: str,
             for key in desiredfields:
                 halogrp = HDF5WriteDataset(hdffile[snapkey], key, activehalodata[key], icompress)
             halodata[key] = None
-        print('Finished adding data to files in ', time.process_time() - time1)
+        print('Finished adding data to files in ', time.process_time() - time1, flush=True)
     for ifile in range(nfiles):
         hdffiles[ifile].close()
 
@@ -3895,7 +3895,7 @@ def ForceBiDirectionalTreeInForestFile(basename, icompress = False):
                 newdata[descenindex[activedescens][wdata]] = ids[activedescens][wdata]
                 data = hdffile[snapkey2]['Progenitor']
                 data[:] = newdata
-        print('Finished updating data ', time.process_time()-time1)
+        print('Finished updating data ', time.process_time()-time1, flush=True)
         hdffile.close()
 
 def PruneForest(basename, forestsizelimit = 2, ibackup = True,
@@ -3933,16 +3933,16 @@ def PruneForest(basename, forestsizelimit = 2, ibackup = True,
     # if all forests are of the correct size
     # then do nothing
     if (forestselection.size == forestsizes.size):
-        print('Forest file has no forests to be pruned based on min size of', forestsizelimit)
-        print('Doing nothing')
+        print('Forest file has no forests to be pruned based on min size of', forestsizelimit, flush=True)
+        print('Doing nothing', flush=True)
         return
     elif (forestselection.size == 0):
-        print('Error, all forests to be pruned based on minimum size of', forestsizelimit)
-        print('Doing nothing')
+        print('Error, all forests to be pruned based on minimum size of', forestsizelimit, flush=True)
+        print('Doing nothing', flush=True)
         return
     else :
-        print('Pruning forest file of forests smaller than', forestsizelimit)
-        print('This is removing', forestsizes.size - forestselection.size)
+        print('Pruning forest file of forests smaller than', forestsizelimit, flush=True)
+        print('This is removing', forestsizes.size - forestselection.size, flush=True)
 
     fname = basename+'.hdf5.%d'%0
     hdffile = h5py.File(fname, 'r')
@@ -3965,7 +3965,7 @@ def PruneForest(basename, forestsizelimit = 2, ibackup = True,
     hdffile.close()
 
     if (ibackup):
-        print('Backing up original data')
+        print('Backing up original data', flush=True)
         fname = basename+'.foreststats.hdf5'
         newfname = fname+'.prepruningbackup'
         subprocess.call(['cp', fname, newfname])
@@ -3974,7 +3974,7 @@ def PruneForest(basename, forestsizelimit = 2, ibackup = True,
             newfname = fname+'.prepruningbackup'
             subprocess.call(['cp', fname, newfname])
 
-    print('Updating data ...')
+    print('Updating data ...', flush=True)
     time1 = time.process_time()
     fname = basename+'.foreststats.hdf5'
     hdffile = h5py.File(fname, 'a')
@@ -4013,14 +4013,14 @@ def PruneForest(basename, forestsizelimit = 2, ibackup = True,
         #snapgrp.attrs['MaxForestID'] = forestdata['Snapshots']['Max_forest_ID'][snapkey]
         #snapgrp.attrs['MaxForestFOFGroupSize'] = forestdata['Snapshots']['Max_forest_fof_groups_size'][snapkey]
         #snapgrp.attrs['MaxForestFOFGroupID'] = forestdata['Snapshots']['Max_forest_fof_groups_ID'][snapkey]
-    print('metadata updated', time.process_time()-time1)
+    print('metadata updated', time.process_time()-time1, flush=True)
     hdffile.close()
 
     newnumforestinfiles = np.zeros(nfiles, dtype=np.int64)
     for ifile in range(nfiles):
         time1 = time.process_time()
         fname = basename+'.hdf5.%d'%ifile
-        print('updating', fname)
+        print('updating', fname, flush=True)
         hdffile = h5py.File(fname, 'a')
         forestgrp = hdffile["ForestInfoInFile"]
         data = forestgrp['ForestIDsInFile']
@@ -4062,7 +4062,7 @@ def PruneForest(basename, forestsizelimit = 2, ibackup = True,
                 del hdffile[snapkey][aliaskey]
                 hdffile[snapkey][aliaskey] = hdffile[snapkey][aliasedkeyspropkeymap[aliaskey]]
             hdffile[snapkey].attrs['NHalos'] = activeforestindex.size
-        print('Finished updating data ', time.process_time()-time1)
+        print('Finished updating data ', time.process_time()-time1, flush=True)
         hdffile.close()
 
     #last update on number of forests per file
