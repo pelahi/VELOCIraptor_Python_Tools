@@ -25,8 +25,10 @@ import multiprocessing as mp
 #import mpi4py as mpi
 from collections import deque
 import pandas as pd
+import dask
 #import cython
 #from cython.parallel import prange, parallel
+
 
 # would be good to compile these routines with cython
 # try to speed up search
@@ -3471,8 +3473,29 @@ def ReadForest(basename, desiredfields=[], iverbose=False):
 
     return halodata, numhalos, atime, simdata, unitdata
 
-def ForestSorter(basename, isortorder = 'random', ibackup = True,
-    icompress = False):
+def myforestorderingsort(data : list):
+    sort = data[0]
+    data[1][0] = data[1][0][sort]
+    data[1][1] = data[1][1][sort]
+
+def mysnaporderingnewids(data : list):
+    forestids = data[0]
+    numhalos = data[1]['numhalos']
+    if (numhalos == 0) : return
+    activeforestids = data[1]['activeforestids']
+    xy, x_ind, y_ind = np.intersect1d(activeforestids, forestids, return_indices=True)
+    unique, inverse = np.unique(activeforestids, return_inverse=True)
+    sort_data[0] = data[1]['sort_data'][0]
+    sort_data[1] = data[1]['sort_data'][1]
+    sort_data[2] = y_ind[inverse]
+    data[1]['indices'] = np.array(np.lexsort(sort_data))
+    snapnum = data[2]
+    TEMPORALHALOIDVAL = data[3]
+    data[1]['newids'] = snapnum*TEMPORALHALOIDVAL+np.arange(numhalos, dtype=np.int64)+1
+    data[1]['sort_data'] = None
+
+def ForestSorter(basename : str, isortorder : str = 'random', ibackup : bool = True,
+    icompress : bool = False, iparallel : bool = True):
     """
     Sorts a forest file and remaps halo IDs.
     The sort fields (or sort keys) we ordered such that the first key will peform the
@@ -3530,22 +3553,39 @@ def ForestSorter(basename, isortorder = 'random', ibackup = True,
     sort_fields = ['ForestID', 'hostHaloID', 'npart']
 
     #open old files to get necessary information
-    fname = basename+'.foreststats.hdf5'
-    hdffile = h5py.File(fname, 'r')
-    forestids = np.array(hdffile['ForestInfo']['ForestIDs'])
-    forestsizes = np.array(hdffile['ForestInfo']['ForestSizes'])
+    # fname = basename+'.foreststats.hdf5'
+    # hdffile = h5py.File(fname, 'r')
+    # forestids = np.array(hdffile['ForestInfo']['ForestIDs'])
+    # forestsizes = np.array(hdffile['ForestInfo']['ForestSizes'])
+    #
+    # if (isortorder == 'ids'):
+    #     forestordering = np.argsort(forestsizes)
+    # elif (isortorder == 'sizes'):
+    #     forestordering = np.argsort(forestsizes)
+    # elif (isortorder == 'random'):
+    #     forestordering = np.random.choice(np.argsort(forestsizes),
+    #         forestids.size, replace=False)
+    #
+    # numsnaps = np.int64(hdffile['Header'].attrs["NSnaps"])
+    # nfiles = np.int64(hdffile['Header'].attrs["NFiles"])
+    # hdffile.close()
 
-    if (isortorder == 'ids'):
-        forestordering = np.argsort(forestsizes)
-    elif (isortorder == 'sizes'):
-        forestordering = np.argsort(forestsizes)
-    elif (isortorder == 'random'):
-        forestordering = np.random.choice(np.argsort(forestsizes),
-            forestids.size, replace=False)
+    fname = basename + '.foreststats.hdf5'
+    with h5py.File(fname, 'r') as hdffile:
+        forestids = hdffile['ForestInfo']['ForestIDs'][:]
+        forestsizes = hdffile['ForestInfo']['ForestSizes'][:]
+    	# both ids and sizes sorts on forestsizes -> typo? MS 31/03/2020
+        if (isortorder == 'ids'):
+            forestordering = np.argsort(forestids)
+        elif (isortorder == 'sizes'):
+            forestordering = np.argsort(forestsizes)
+        elif (isortorder == 'random'):
+            forestordering = np.random.choice(forestids.size,
+                                              size=forestids.size,
+                                              replace=False)
 
-    numsnaps = np.int64(hdffile['Header'].attrs["NSnaps"])
-    nfiles = np.int64(hdffile['Header'].attrs["NFiles"])
-    hdffile.close()
+        numsnaps = hdffile['Header'].attrs["NSnaps"]
+        nfiles = hdffile['Header'].attrs["NFiles"]
 
     fname = basename+'.hdf5.%d'%0
     hdffile = h5py.File(fname, 'r')
@@ -3575,8 +3615,9 @@ def ForestSorter(basename, isortorder = 'random', ibackup = True,
             subprocess.call(['cp', fname, newfname])
 
     # reorder file containing meta information
-    print('Reordering forest stats data ...', flush=True)
     time1 = time.process_time()
+    print('Reordering forest stats data ...', flush=True)
+
     fname = basename+'.foreststats.hdf5'
     hdffile = h5py.File(fname, 'r+')
     forestgrp = hdffile['ForestInfo']
@@ -3586,14 +3627,35 @@ def ForestSorter(basename, isortorder = 'random', ibackup = True,
     data = forestgrp['ForestSizes']
     data[:] = forestsizes[forestordering]
     snapskeys = list(forestgrp['Snaps'].keys())
-    for snapkey in snapskeys:
-        snapgrp = forestgrp['Snaps'][snapkey]
-        numhalos = np.array(snapgrp['NumHalosInForest'])[forestordering]
-        numfofs = np.array(snapgrp['NumFOFGroupsInForest'])[forestordering]
-        data = snapgrp['NumHalosInForest']
-        data[:] = numhalos
-        data = snapgrp['NumFOFGroupsInForest']
-        data[:] = numfofs
+
+    # set dask thread scheduler to parallelize over snapshots.
+    if (iparallel) :
+        dask.config.set(scheduler='threads')
+        # load data into dask array
+        inputdata = dict()
+        for snapkey in snapskeys:
+            snapgrp = forestgrp['Snaps'][snapkey]
+            inputdata[snapkey] = [dask.array(snapgrp['NumHalosInForest']),
+                dask.array(snapgrp['NumHalosInForest'])]
+        lazy_results = list()
+        for snapkey in snapskeys:
+            lazy_results.append(dask.delayed(myforestorderingsort)([forestordering, inputdata[snapkey]]))
+        dask.compute(*lazy_results)
+        for snapkey in snapskeys:
+            snapgrp = forestgrp['Snaps'][snapkey]
+            data = snapgrp['NumHalosInForest']
+            data[:] = inputdata[snapkey][0]
+            data = snapgrp['NumFOFGroupsInForest']
+            data[:] = inputdata[snapkey][1]
+    else :
+        for snapkey in snapskeys:
+            snapgrp = forestgrp['Snaps'][snapkey]
+            numhalos = np.array(snapgrp['NumHalosInForest'])[forestordering]
+            numfofs = np.array(snapgrp['NumFOFGroupsInForest'])[forestordering]
+            data = snapgrp['NumHalosInForest']
+            data[:] = numhalos
+            data = snapgrp['NumFOFGroupsInForest']
+            data[:] = numfofs
     hdffile.close()
     print('Done', time.process_time()-time1, flush=True)
 
@@ -3601,51 +3663,95 @@ def ForestSorter(basename, isortorder = 'random', ibackup = True,
         fname = basename+'.hdf5.%d'%ifile
         hdffile = h5py.File(fname, 'a')
         print('First pass building id map for file', fname, flush=True)
+        snapskeys = list(forestgrp['Snaps'].keys())[::-1]
 
         #first pass to resort arrays
         #store the ids and the newids to map stuff
         alloldids = np.array([], dtype=np.int64)
         allnewids = np.array([], dtype=np.int64)
         time1 = time.process_time()
-        for i in range(numsnaps):
-            snapkey = "Snap_%03d" % i
-            numhalos = np.int64(hdffile[snapkey].attrs['NHalos'])
-            if (numhalos == 0): continue
-            ids = np.array(hdffile[snapkey]['ID'], dtype=np.int64)
-            sort_data = np.zeros([len(sort_fields),ids.size], dtype=np.int64)
-            sort_data[0] = -np.array(hdffile[snapkey]['npart'], dtype=np.int64)
-            sort_data[1] = np.array(hdffile[snapkey]['hostHaloID'], dtype=np.int64)
-            activeforestids = np.array(hdffile[snapkey]['ForestID'], dtype=np.int64)
-            xy, x_ind, y_ind = np.intersect1d(activeforestids, forestids, return_indices=True)
-            unique, inverse = np.unique(activeforestids, return_inverse=True)
-            sort_data[2] = y_ind[inverse]
-            indices = np.array(np.lexsort(sort_data))
-            newids = i*TEMPORALHALOIDVAL+np.arange(numhalos, dtype=np.int64)+1
 
-            alloldids = np.concatenate([alloldids,np.array(ids[indices], dtype=np.int64)])
-            allnewids = np.concatenate([allnewids,newids])
+        if (iparallel) :
+            dask.config.set(scheduler='threads')
+            inputdata = dict()
+            totalnumhalos = 0
+            for snapkey in snapskeys:
+                numhalos = np.int64(hdffile[snapkey].attrs['NHalos'])
+                inputdata[snapkey] = dict()
+                inputdata[snapkey]['numhalos'] = numhalos
+                totalnumhalos += numhalos
+                if (numhalos == 0): continue
+                inputdata[snapkey]['sort_data'] = dask.zeros([len(sort_fields),ids.size], dtype=np.int64)
+                inputdata[snapkey]['sort_data'][0] = -dask.array(hdffile[snapkey]['npart'], dtype=np.int64)
+                inputdata[snapkey]['sort_data'][1] = dask.array(hdffile[snapkey]['hostHaloID'], dtype=np.int64)
+                inputdata[snapkey]['activeforestids'] = dask.array(hdffile[snapkey]['ForestID'], dtype=np.int64)
+            lazy_results = list()
+            for snapkey in snapskeys:
+                snapnum = np.int64(snapkey.split('_')[-1])
+                lazy_results.append(dask.delayed(mysnaporderingnewids)([forestids, inputdata[snapkey], snapnum, TEMPORALHALOIDVAL]))
+            dask.compute(*lazy_results)
 
-            for propkey in propkeys:
-                if (propkey == 'NHalosPerForestInSnap'): continue
-                if (propkey == 'ID'): continue
-                if (propkey in aliasedkeys): continue
-                newdata = np.array(hdffile[snapkey][propkey])[indices]
-                data = hdffile[snapkey][propkey]
-                data[:] = newdata
-            HDF5WriteDataset(hdffile[snapkey], 'ID_old', ids[indices], icompress)
-            # hdffile[snapkey].create_dataset('ID_old',
-            #     data=ids[indices], dtype=np.int64, compression='gzip', compression_opts=6)
-            data = hdffile[snapkey]['ID']
-            data[:] = newids
+            alloldids = np.zeros(totalnumhalos, dtype=np.int64)
+            allnewids = np.zeros(totalnumhalos, dtype=np.int64)
+            offset = 0
+            for snapkey in snapskeys:
+                numhalos = np.int64(hdffile[snapkey].attrs['NHalos'])
+                ids = np.array(hdffile[snapkey]['ID'], dtype=np.int64)
+                indices = inputdata[snapkey]['indices']
+                newids = inputdata[snapkey]['newids']
+                alloldids[offset:offset+numhalos] = ids[indices]
+                allnewids[offset:offset+numhalos] = newids
+
+                for propkey in propkeys:
+                    if (propkey == 'NHalosPerForestInSnap'): continue
+                    if (propkey == 'ID'): continue
+                    if (propkey in aliasedkeys): continue
+                    newdata = np.array(hdffile[snapkey][propkey])[indices]
+                    data = hdffile[snapkey][propkey]
+                    data[:] = newdata
+                HDF5WriteDataset(hdffile[snapkey], 'ID_old', ids[indices], icompress)
+                data = hdffile[snapkey]['ID']
+                data[:] = newids
+        else :
+            for snapkey in snapskeys:
+                numhalos = np.int64(hdffile[snapkey].attrs['NHalos'])
+                snapnum = np.int64(snapkey.split('_')[-1])
+                if (numhalos == 0): continue
+                ids = np.array(hdffile[snapkey]['ID'], dtype=np.int64)
+                sort_data = np.zeros([len(sort_fields),ids.size], dtype=np.int64)
+                sort_data[0] = -np.array(hdffile[snapkey]['npart'], dtype=np.int64)
+                sort_data[1] = np.array(hdffile[snapkey]['hostHaloID'], dtype=np.int64)
+                activeforestids = np.array(hdffile[snapkey]['ForestID'], dtype=np.int64)
+                xy, x_ind, y_ind = np.intersect1d(activeforestids, forestids, return_indices=True)
+                unique, inverse = np.unique(activeforestids, return_inverse=True)
+                sort_data[2] = y_ind[inverse]
+                indices = np.array(np.lexsort(sort_data))
+                newids = snapnum*TEMPORALHALOIDVAL+np.arange(numhalos, dtype=np.int64)+1
+
+                alloldids = np.concatenate([alloldids,np.array(ids[indices], dtype=np.int64)])
+                allnewids = np.concatenate([allnewids,newids])
+
+                for propkey in propkeys:
+                    if (propkey == 'NHalosPerForestInSnap'): continue
+                    if (propkey == 'ID'): continue
+                    if (propkey in aliasedkeys): continue
+                    newdata = np.array(hdffile[snapkey][propkey])[indices]
+                    data = hdffile[snapkey][propkey]
+                    data[:] = newdata
+                HDF5WriteDataset(hdffile[snapkey], 'ID_old', ids[indices], icompress)
+                # hdffile[snapkey].create_dataset('ID_old',
+                #     data=ids[indices], dtype=np.int64, compression='gzip', compression_opts=6)
+                data = hdffile[snapkey]['ID']
+                data[:] = newids
 
         #now go over temporal and subhalo fields and update as necessary
         print('Finished pass and now have map of new ids to old ids', time.process_time()-time1, flush=True)
         time1 = time.process_time()
-        for i in range(numsnaps):
-            snapkey = "Snap_%03d" % i
+
+        for snapkey in snapskeys:
             numhalos = np.int32(hdffile[snapkey].attrs['NHalos'])
             if (numhalos == 0): continue
-            print('Processing',snapkey, flush=True)
+            print('Processing', snapkey, flush=True)
             time2 = time.process_time()
             for propkey in temporalkeys:
                 olddata = np.array(hdffile[snapkey][propkey])
