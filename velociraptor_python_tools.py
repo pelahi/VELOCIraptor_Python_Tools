@@ -1234,8 +1234,8 @@ def ReadParticleDataFile(basefilename, ibinary=0, iseparatesubfiles=0, iparttype
                 if (iparttypes == 1):
                     tfile = h5py.File(tfilename, 'r')
                     utfile = h5py.File(utfilename, 'r')
-                    tdata = np.uint16(pfile["Particle_types"])
-                    utdata = np.uint16(upfile["Particle_types"])
+                    tdata = np.uint16(tfile["Particle_types"])
+                    utdata = np.uint16(utfile["Particle_types"])
                     tfile.close()
                     utfile.close()
 
