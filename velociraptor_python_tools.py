@@ -2485,18 +2485,20 @@ def GenerateProgenitorLinks(numsnaps, numhalos, halodata, ireversesnaporder=Fals
             wdata = np.where(np.in1d(halodata[k]['Head'], heads))
             if (len(wdata[0]) == 0):
                 continue
-            progens.append(wdata[0])
-            progenssnaps.append(np.ones(len(progens[-1]))*k)
-            progensheads.append(halodata[k]['Head'][wdata])
-            progensids.append(halodata[k]['ID'][wdata])
-        # flatten and then reorder to group stuff by head
-        progens = np.array(np.concatenate(progens), dtype=np.int64)
-        progenssnaps = np.array(np.concatenate(progenssnaps), dtype=np.int32)
-        progensheads = np.array(np.concatenate(progensheads), dtype=np.int64)
-        progensids = np.array(np.concatenate(progensids), dtype=np.int64)
+            progens.extend(wdata[0])
+            progenssnaps.extend(np.full(len(progens),k))
+            progensheads.extend(halodata[k]['Head'][wdata])
+            progensids.extend(halodata[k]['ID'][wdata])
+
         nprogs = len(progens)
         if (nprogs < 2):
             continue
+
+        # flatten and then reorder to group stuff by head
+        progens = np.array(progens, dtype=np.int64)
+        progenssnaps = np.array(progenssnaps, dtype=np.int32)
+        progensheads = np.array(progensheads, dtype=np.int64)
+        progensids = np.array(progensids, dtype=np.int64)
         idx = np.argsort(progensheads)
         progens, progenssnaps, progensheads, progensids = progens[
             idx], progenssnaps[idx], progensheads[idx], progensids[idx]
